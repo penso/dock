@@ -3,7 +3,7 @@
 A macOS-inspired dock for **Hyprland**, built with
 [Quickshell](https://quickshell.org/), Qt Quick, and Python.
 
-![Dock with smooth icon magnification](docs/screenshots/dock.png)
+![Bottom-positioned Dock with smooth icon magnification](docs/screenshots/dock.png)
 
 ## Features
 
@@ -15,10 +15,11 @@ A macOS-inspired dock for **Hyprland**, built with
 - Searchable application grid with keyboard navigation.
 - Live icon-size and magnification settings, plus editable theme colors.
 
-![Dock appearance settings](docs/screenshots/settings.png)
+![Dock appearance settings with Bottom selected](docs/screenshots/settings.png)
 
 Dock appears on normal workspaces, tiled or floating. It has its own settings
 and does not require Omarchy, Waybar, or a particular desktop configuration.
+Bottom placement is the default, as shown above.
 
 ## Requirements
 
