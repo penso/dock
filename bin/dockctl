@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Persistent settings and Hyprland window actions for Penso Dock."""
+"""Persistent settings and Hyprland window actions for Dock."""
 import argparse
 import fcntl
 import json
@@ -9,10 +9,10 @@ import re
 import subprocess
 import tempfile
 
-CONFIG_DIR = Path(os.environ.get("PENSO_DOCK_CONFIG_DIR", str(Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "penso-dock")))
+CONFIG_DIR = Path(os.environ.get("DOCK_CONFIG_DIR", str(Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "dock")))
 CONFIG = CONFIG_DIR / "settings.json"
-HYPRCTL = os.environ.get("PENSO_DOCK_HYPRCTL", "hyprctl")
-BACKEND = os.environ.get("PENSO_DOCK_BACKEND", "lua")
+HYPRCTL = os.environ.get("DOCK_HYPRCTL", "hyprctl")
+BACKEND = os.environ.get("DOCK_BACKEND", "lua")
 DEFAULTS = {"dock": {"position": "bottom", "pinned": [], "autohide": False, "intellihide": True, "size": 40, "magnification": 132}}
 THEME = {"base": "#1a1b26", "surface": "#24283b", "text": "#c0caf5", "blue": "#7aa2f7", "muted": "#787c99"}
 
@@ -57,7 +57,7 @@ def dispatch(lua, classic, argument):
         return ctl("dispatch", lua)
     if BACKEND == "classic":
         return ctl("dispatch", classic, argument)
-    raise ValueError("PENSO_DOCK_BACKEND must be lua or classic")
+    raise ValueError("DOCK_BACKEND must be lua or classic")
 
 
 def move(address, workspace):
@@ -161,4 +161,4 @@ if __name__ == "__main__":
     try:
         main()
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
-        raise SystemExit(f"penso-dock: {error}")
+        raise SystemExit(f"dock: {error}")

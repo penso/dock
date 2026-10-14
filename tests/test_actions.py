@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "bin/penso-dockctl"
+SCRIPT = Path(__file__).resolve().parents[1] / "bin/dockctl"
 loader = importlib.machinery.SourceFileLoader("dock_actions", str(SCRIPT))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 actions = importlib.util.module_from_spec(spec)

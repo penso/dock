@@ -1,0 +1,21 @@
+#!/bin/sh
+set -eu
+self=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ -f "$self/../qml/shell.qml" ]; then
+    data=$(CDPATH= cd -- "$self/.." && pwd)
+else
+    data="${XDG_DATA_HOME:-$HOME/.local/share}/dock"
+fi
+export DOCK_CONFIG_DIR="${DOCK_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/dock}"
+export DOCK_HELPER="$data/bin/dockctl"
+export QT_QUICK_CONTROLS_STYLE="${QT_QUICK_CONTROLS_STYLE:-Basic}"
+python3 "$DOCK_HELPER" init
+if [ "${1:-}" = ctl ]; then
+    shift
+    exec python3 "$DOCK_HELPER" "$@"
+fi
+if [ "${1:-}" = ipc ]; then
+    shift
+    exec "${DOCK_QUICKSHELL:-quickshell}" -p "$data/qml" ipc call dock "$@"
+fi
+exec "${DOCK_QUICKSHELL:-quickshell}" -p "$data/qml" --no-duplicate "$@"

@@ -11,8 +11,8 @@ import "DockModel.js" as DockModel
 ShellRoot {
     id: root
     readonly property string home: Quickshell.env("HOME")
-    readonly property string configDir: Quickshell.env("PENSO_DOCK_CONFIG_DIR") || ((Quickshell.env("XDG_CONFIG_HOME") || home + "/.config") + "/penso-dock")
-    readonly property string helper: Quickshell.env("PENSO_DOCK_HELPER") || decodeURIComponent(Qt.resolvedUrl("../bin/penso-dockctl").toString().replace(/^file:\/\//, ""))
+    readonly property string configDir: Quickshell.env("DOCK_CONFIG_DIR") || ((Quickshell.env("XDG_CONFIG_HOME") || home + "/.config") + "/dock")
+    readonly property string helper: Quickshell.env("DOCK_HELPER") || decodeURIComponent(Qt.resolvedUrl("../bin/dockctl").toString().replace(/^file:\/\//, ""))
     property var settings: ({ dock: { position: "bottom", pinned: [], autohide: false } })
     property var palette: ({ base: "#eff1f5", surface: "#dce0e8", text: "#4c4f69", blue: "#1e66f5", muted: "#8c8fa1" })
     readonly property string edge: DockModel.normalizePosition(settings.dock.position)
@@ -39,7 +39,7 @@ ShellRoot {
     function alpha(color, opacity) { var c = Qt.color(color); return Qt.rgba(c.r, c.g, c.b, opacity) }
     Process {
         id: geometryPoll
-        command: [Quickshell.env("PENSO_DOCK_HYPRCTL") || "hyprctl", "clients", "-j"]
+        command: [Quickshell.env("DOCK_HYPRCTL") || "hyprctl", "clients", "-j"]
         stdout: StdioCollector { onStreamFinished: { try { root.clients = JSON.parse(text) } catch (e) {} } }
     }
     Timer { interval: 400; running: root.settings.dock.intellihide !== false; repeat: true; triggeredOnStart: true; onTriggered: if (!geometryPoll.running) geometryPoll.running = true }
@@ -199,7 +199,7 @@ ShellRoot {
                 height: root.vertical ? shelf.height : (dock.expanded ? (dock.hovered ? shelf.depth : 86 * root.dockUnit) : 3)
             }
             exclusiveZone: 0
-            WlrLayershell.namespace: "penso-dock"
+            WlrLayershell.namespace: "dock"
             WlrLayershell.layer: WlrLayer.Top
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
             anchors {
@@ -382,7 +382,7 @@ ShellRoot {
         implicitWidth: Math.min(820, screen ? screen.width - 80 : 820)
         implicitHeight: Math.min(620, screen ? screen.height - 120 : 620)
         exclusiveZone: 0
-        WlrLayershell.namespace: "penso-app-grid"
+        WlrLayershell.namespace: "dock-app-grid"
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.keyboardFocus: root.appsOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         onVisibleChanged: if (visible) { search.text = ""; search.forceActiveFocus() }

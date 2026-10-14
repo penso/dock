@@ -1,126 +1,128 @@
-# Penso Dock
+# Dock
 
-A macOS-inspired dock and application launcher for **Hyprland**, built with
-[Quickshell](https://quickshell.org/), Qt Quick, and a small Python helper.
+A macOS-inspired dock for **Hyprland**, built with
+[Quickshell](https://quickshell.org/), Qt Quick, and Python.
+
+![Dock with smooth icon magnification](docs/screenshots/dock.png)
 
 ## Features
 
-- Smooth, spring-driven icon magnification and launch animation.
-- Drag to reorder favorites or pin a running application.
+- Spring-driven icon magnification and launch animation.
+- Drag to reorder favorites or pin running applications.
 - Running-window indicators, window switching, and live hover previews.
-- Restore minimized windows and close windows from their preview cards.
-- Bottom, top, left, and right placement, with multi-monitor panels.
-- Auto-hide and intelligent hiding when windows overlap the dock.
+- Restore minimized windows and close windows from preview cards.
+- All four screen edges, multi-monitor panels, auto-hide, and intelligent hiding.
 - Searchable application grid with keyboard navigation.
-- Live settings for icon size and magnification; editable theme colors.
+- Live icon-size and magnification settings, plus editable theme colors.
 
-The standalone dock appears on normal workspaces, whether tiled or floating.
-It manages its own configuration and does not require Omarchy, Waybar, or the
-author's workspace-layout scripts.
+![Dock appearance settings](docs/screenshots/settings.png)
+
+Dock appears on normal workspaces, tiled or floating. It has its own settings
+and does not require Omarchy, Waybar, or a particular desktop configuration.
 
 ## Requirements
 
-- Linux with a running Hyprland Wayland session and `hyprctl` on `PATH`.
-- **Quickshell 0.3.2**, built with Hyprland, Wayland, and screencopy support.
-  This is the version tested during extraction; older releases are unverified.
+- Linux, a running Hyprland Wayland session, and `hyprctl` on `PATH`.
+- **Quickshell 0.3.2**, built with Hyprland, Wayland, and screencopy support
+  (the tested version; older releases are unverified).
 - Qt 6 QML modules: QtQuick, QtQuick.Controls, QtQuick.Layouts, QtQuick.Effects.
-- Python 3.10+ (standard library only).
-- An installed icon theme and applications with desktop files.
+- Python 3.10+ and an icon theme. No third-party Python packages are needed.
 
-The default dispatcher backend uses Hyprland's Lua API, tested on the
-0.56.0 development build. For versions using traditional dispatchers, launch
-with `PENSO_DOCK_BACKEND=classic`; that backend has unit coverage but has not
-been tested against an older running compositor.
+The default window-action backend uses Hyprland's Lua API, tested on a 0.56.0
+development build. On versions using traditional dispatchers, set
+`DOCK_BACKEND=classic`. The classic backend has unit coverage but has not been
+tested on an older running compositor.
 
-Install Quickshell and its QML dependencies using your distribution's packages
-or the [upstream installation instructions](https://quickshell.org/docs/guide/install-setup/).
-Package names vary by distribution.
+Install Quickshell through your distribution or follow its
+[installation guide](https://quickshell.org/docs/guide/install-setup/).
 
-## Run from a checkout
+## Quick start
 
 ```sh
-./bin/penso-dock
-# Traditional Hyprland dispatcher API:
-PENSO_DOCK_BACKEND=classic ./bin/penso-dock
+git clone https://github.com/penso/dock.git
+cd dock
+./bin/dock
 ```
 
-Settings are created at `${XDG_CONFIG_HOME:-~/.config}/penso-dock/` on first run.
-Right-click the launcher icon for settings, edge placement, and hide options.
-Right-click an app to pin/unpin it; drag icons to change their order.
+For traditional Hyprland dispatchers:
 
-## Install for your user
+```sh
+DOCK_BACKEND=classic ./bin/dock
+```
+
+Right-click the launcher for settings and hide options. Right-click an app to
+pin it; drag icons to reorder them. Settings are created under
+`${XDG_CONFIG_HOME:-~/.config}/dock/` on first run.
+
+## Install
 
 ```sh
 python3 install.py
-~/.local/bin/penso-dock
+~/.local/bin/dock
 ```
 
-The installer copies source files into `${XDG_DATA_HOME:-~/.local/share}/penso-dock`,
-installs a launcher into `~/.local/bin`, and writes a systemd user service.
-Existing dock settings and theme colors are preserved. Re-run to update.
-An existing `penso-dock.service` is replaced; stop a personal version before
-switching to this package so two docks do not overlap.
+This installs source into `${XDG_DATA_HOME:-~/.local/share}/dock`, a launcher
+into `~/.local/bin`, and a systemd user service. Settings and theme colors are
+preserved on reinstallation. Stop any other dock before starting this one.
 
 ### Autostart
 
-Use **one** of these methods:
-
-Traditional Hyprland configuration:
+Choose one method. Traditional Hyprland configuration:
 
 ```ini
-exec-once = ~/.local/bin/penso-dock
+exec-once = ~/.local/bin/dock
 ```
 
 Lua Hyprland configuration:
 
 ```lua
 hl.on("hyprland.start", function()
-  hl.exec_cmd(os.getenv("HOME") .. "/.local/bin/penso-dock")
+  hl.exec_cmd(os.getenv("HOME") .. "/.local/bin/dock")
 end)
 ```
 
-Or, for systemd-managed desktop sessions, import the session environment and
-start the service from your session startup:
+For systemd-managed sessions, run this from your session startup:
 
 ```sh
 systemctl --user daemon-reload
 dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY HYPRLAND_INSTANCE_SIGNATURE PATH
-systemctl --user start penso-dock.service
+systemctl --user start dock.service
 ```
 
-When using a custom XDG directory or dispatcher backend, also import
-`XDG_CONFIG_HOME`, `XDG_DATA_HOME`, and `PENSO_DOCK_BACKEND` if set.
+Also import `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, and `DOCK_BACKEND` if you set
+custom values. For the classic backend, export `DOCK_BACKEND=classic` before
+launching, including in your autostart command or service environment.
 
-## Configuration and commands
+## Configuration
 
 See [`config/settings.json`](config/settings.json) and
-[`config/theme.json`](config/theme.json) for defaults. Files are watched live.
-Pin IDs are desktop file names without the `.desktop` suffix. Missing apps are
-kept in settings but not displayed until installed.
+[`config/theme.json`](config/theme.json). Both files are watched live.
+Favorites use desktop file names without `.desktop`; missing applications are
+retained in settings but hidden until installed.
 
 ```sh
-penso-dock ctl pin org.gnome.Nautilus
-penso-dock ctl position left
-penso-dock ctl appearance 48 150
-penso-dock ctl autohide on
-penso-dock ctl intellihide off
-penso-dock ipc apps
-penso-dock ipc settings
-penso-dock ipc status
+dock ctl pin org.gnome.Nautilus
+dock ctl position left
+dock ctl appearance 48 150
+dock ctl autohide on
+dock ctl intellihide off
+dock ipc apps
+dock ipc settings
+dock ipc status
 ```
 
-Minimization parks windows in `special:minimized`, since Hyprland does not have
-a conventional minimized state. Bind `penso-dock ctl minimize` to your preferred
-shortcut or titlebar action; the dock restores those windows on activation.
+Bind `dock ctl minimize` to a shortcut or titlebar action to move a window to
+`special:minimized`. Clicking its dock entry restores it to the current
+workspace. Hyprland does not have a conventional minimized state.
 
-| Environment variable | Default / purpose |
+| Variable | Purpose / default |
 | --- | --- |
-| `PENSO_DOCK_CONFIG_DIR` | `$XDG_CONFIG_HOME/penso-dock`; isolate a test configuration |
-| `PENSO_DOCK_HYPRCTL` | `hyprctl`; custom executable path |
-| `PENSO_DOCK_QUICKSHELL` | `quickshell`; custom executable path |
-| `PENSO_DOCK_BACKEND` | `lua` or `classic` window dispatchers |
+| `DOCK_CONFIG_DIR` | Settings directory; `$XDG_CONFIG_HOME/dock` |
+| `DOCK_HYPRCTL` | Hyprland executable; `hyprctl` |
+| `DOCK_QUICKSHELL` | Quickshell executable; `quickshell` |
+| `DOCK_BACKEND` | Window dispatchers; `lua` or `classic` |
 
-## Development and tests
+## Development
 
 ```sh
 node --test qml/tests/model.test.js
@@ -129,21 +131,17 @@ QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
   /usr/lib/qt6/bin/qmltestrunner -input qml/tests -o -,txt
 ```
 
-QML tests require QtTest and `qmltestrunner` (its location varies by distribution).
-They exercise hover magnification, drag ordering, activation, edge placement,
-size changes, and launch feedback. Python tests exercise settings and window
-actions without touching a real desktop. Node tests cover the motion model.
+QML tests need QtTest and `qmltestrunner`; its path varies by distribution.
+Tests cover magnification, drag ordering, window actions, settings persistence,
+installation, placement, and launch feedback. Core tests run in GitHub Actions.
 
-To try source changes alongside a separate settings directory:
+Use `DOCK_CONFIG_DIR=/tmp/dock-dev ./bin/dock` for isolated settings.
+`qml/` contains the UI, `bin/dockctl` handles actions, and `bin/dock` launches
+the same code from a checkout or installation.
 
-```sh
-PENSO_DOCK_CONFIG_DIR=/tmp/penso-dock-dev ./bin/penso-dock
-```
-
-`qml/` contains the UI; `bin/penso-dockctl` handles settings and dispatchers;
-`bin/penso-dock` launches the same code from a checkout or user installation.
-No compiled binaries, personal app list, or machine-specific paths are shipped.
+Screenshots show the real UI with sample application favorites; desktop content
+outside the dock and settings window is excluded.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+[MIT](LICENSE).
