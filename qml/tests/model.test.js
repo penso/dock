@@ -140,3 +140,27 @@ test('unpinned running applications follow favorites regardless of window arriva
   assert.ok(lens.items[2].position + lens.items[2].extent < lens.separator)
   assert.ok(lens.items[3].position > lens.separator)
 })
+
+test('launcher badges match desktop IDs without changing pin order or making up counts', () => {
+  const items = model.buildItems(['mail.desktop', 'files'], [{key:'files', hasEntry:true, workspaceId:1, urgent:true, activated:false}])
+  const decorated = model.withLauncherEntries(items, {mail: {count: 7, countVisible:true}})
+  assert.equal(decorated[0].activity.count, 7)
+  assert.equal(decorated[1].urgent, true)
+  assert.equal(decorated[1].activity.count, undefined)
+  assert.equal(items[0].activity, undefined)
+  const cleared = model.withLauncherEntries(model.buildItems(['files'], [{key:'files', hasEntry:true, workspaceId:1, urgent:true, activated:true}]), {})
+  assert.equal(cleared[0].urgent, false)
+})
+
+test('native urgent events survive unrelated events and clear on focus or close', () => {
+  let state = model.urgencyEvent({}, 'urgent', '0xABC')
+  assert.equal(state.abc, true)
+  assert.equal(model.windowAddress('ABC'), 'abc')
+  state = model.urgencyEvent(state, 'urgent', 'def')
+  assert.equal(model.urgencyEvent(state, 'windowtitle', 'abc,title'), state)
+  state = model.urgencyEvent(state, 'activewindowv2', 'abc')
+  assert.equal(state.abc, undefined)
+  assert.equal(state.def, true)
+  state = model.urgencyEvent(state, 'closewindow', 'def')
+  assert.deepEqual(state, {})
+})

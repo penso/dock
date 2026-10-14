@@ -99,6 +99,28 @@ function buildItems(pinned, windows) {
   return items
 }
 
+function withLauncherEntries(items, entries) {
+  return items.map(function(item) {
+    var activity = entries[normalizeId(item.key)] || {}
+    var urgent = activity.urgent === true || item.windows.some(function(window) { return window.urgent === true && !window.activated })
+    return Object.assign({}, item, { activity: activity, urgent: urgent })
+  })
+}
+
+function windowAddress(value) {
+  return String(value || "").trim().replace(/^0x/i, "").toLowerCase()
+}
+
+function urgencyEvent(state, event, data) {
+  if (["urgent", "activewindowv2", "closewindow"].indexOf(event) < 0) return state
+  var address = windowAddress(data)
+  if (!/^[0-9a-f]+$/.test(address)) return state
+  var next = Object.assign({}, state)
+  if (event === "urgent") next[address] = true
+  else delete next[address]
+  return next
+}
+
 // Puts the items in the dock's own order, which the dock keeps for the
 // session: an app keeps its slot while it stays in the dock, and an app that
 // joins goes at the end. Items the order does not know yet follow in the order
@@ -287,6 +309,9 @@ if (typeof module !== "undefined") {
     isMinimizedWorkspace: isMinimizedWorkspace,
     claimingEntryId: claimingEntryId,
     buildItems: buildItems,
+    withLauncherEntries: withLauncherEntries,
+    windowAddress: windowAddress,
+    urgencyEvent: urgencyEvent,
     orderItems: orderItems,
     orderWithKeyAt: orderWithKeyAt,
     dropIndex: dropIndex,

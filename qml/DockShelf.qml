@@ -276,13 +276,18 @@ Item {
                     tileColor: shelf.tileColor(slot.modelData)
                     layer.enabled: slot.lifted
                     layer.effect: MultiEffect { shadowEnabled: true; shadowBlur: 0.4; shadowVerticalOffset: 5; shadowColor: "#80000000" }
+                    DockIndicators {
+                        anchors.fill: parent
+                        activity: slot.app && slot.app.activity ? slot.app.activity : ({})
+                        urgent: !!slot.app && slot.app.urgent === true
+                    }
                 }
                 Rectangle {
                     visible: !!slot.app && slot.app.windows.length > 0
                     x: vertical ? (edge === "right" ? shelf.depth - shelf.edgeGap - 9 * unit : shelf.edgeGap + 5 * unit) : (parent.width - width) / 2
                     y: vertical ? (parent.height - height) / 2 : (edge === "bottom" ? shelf.depth - shelf.edgeGap - 9 * unit : shelf.edgeGap + 5 * unit)
                     width: 4 * unit; height: width; radius: width / 2
-                    color: slot.active ? "#f2f2f4" : "#adbec0c5"
+                    color: slot.app && slot.app.urgent ? "#e0af68" : slot.active ? "#f2f2f4" : "#adbec0c5"
                 }
                 SequentialAnimation {
                     id: launchBounce; running: slot.launching && host.expanded; loops: 3

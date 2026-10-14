@@ -11,6 +11,7 @@ A macOS-inspired dock for **Hyprland**, built with
 - Drag to reorder favorites or pin running applications.
 - Drag the divider to resize live; unpinned running apps appear after it.
 - Running-window indicators, window switching, and live hover previews.
+- App-provided unread badges, progress bars, and urgent-window attention marks.
 - Restore minimized windows and close windows from preview cards.
 - All four screen edges, multi-monitor panels, auto-hide, and intelligent hiding.
 - Searchable application grid with keyboard navigation.
@@ -28,7 +29,9 @@ Bottom placement is the default, as shown above.
 - **Quickshell 0.3.2**, built with Hyprland, Wayland, and screencopy support
   (the tested version; older releases are unverified).
 - Qt 6 QML modules: QtQuick, QtQuick.Controls, QtQuick.Layouts, QtQuick.Effects.
-- Python 3.10+ and an icon theme. No third-party Python packages are needed.
+- Python 3.10+ and an icon theme. Core actions use Python's standard library.
+- For unread badges and progress: system Python GObject/Gio bindings
+  (`python3-gi` on Debian/Ubuntu, `python-gobject` on Arch) and session D-Bus.
 
 The default window-action backend uses Hyprland's Lua API, tested on a 0.56.0
 development build. On versions using traditional dispatchers, set
@@ -128,6 +131,19 @@ workspace. Hyprland does not have a conventional minimized state.
 | `DOCK_HYPRCTL` | Hyprland executable; `hyprctl` |
 | `DOCK_QUICKSHELL` | Quickshell executable; `quickshell` |
 | `DOCK_BACKEND` | Window dispatchers; `lua` or `classic` |
+| `DOCK_DBUS_PYTHON` | Python with GObject/Gio installed; `/usr/bin/python3` |
+
+### Badges, progress, and attention
+
+Apps supporting the Unity Launcher API can publish unread counts and progress
+directly to their dock icon. Counts above 99 display as **99+**. An amber outline
+marks attention requested by an app or an urgent Hyprland window.
+
+The app controls its unread count; ordinary notification popups are not counted.
+Support depends on the application. Updates are cleared when their sender exits.
+Your notification daemon continues to handle popups as usual.
+
+See [badge protocol and testing](docs/badges.md) for details and a live demo.
 
 ## Development
 

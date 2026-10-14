@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""Stream Unity LauncherEntry state as JSON lines for the dock UI."""
+import json
+import math
+import signal
+import sys
+from urllib.parse import unquote
+
+
+def desktop_id(uri):
+    if not isinstance(uri, str) or not uri.startswith("application://"):
+        return None
+    name = unquote(uri[len("application://"):])
+    if not name.endswith(".desktop") or any(c in name for c in "/\\?#\n\r\0"):
+        return None
+    return name[:-8] or None
+
+
+class LauncherState:
+    """Partial updates are per sender; the latest sender wins for each app."""
+    def __init__(self):
+        self.sources = {}
+        self.revision = 0
+
+    def update(self, sender, uri, properties):
+        app = desktop_id(uri)
+        if app is None or not isinstance(properties, dict):
+            return False
+        patch = {}
+        for key, value in properties.items():
+            if key in ("count-visible", "progress-visible", "urgent") and type(value) is bool:
+                patch[key] = value
+            elif key == "count" and type(value) is int:
+                patch[key] = max(0, min(value, 2**53 - 1))
+            elif key == "progress" and type(value) in (int, float) and math.isfinite(value):
+                patch[key] = max(0.0, min(1.0, value))
+        if not patch:
+            return False
+        self.revision += 1
+        _, previous = self.sources.get((sender, app), (0, {}))
+        self.sources[sender, app] = (self.revision, {**previous, **patch})
+        return True
+
+    def remove_sender(self, sender):
+        keys = [key for key in self.sources if key[0] == sender]
+        for key in keys:
+            del self.sources[key]
+        return bool(keys)
+
+    def snapshot(self):
+        latest = {}
+        for (_, app), (revision, state) in self.sources.items():
+            if app not in latest or revision > latest[app][0]:
+                latest[app] = (revision, state)
+        return {app: {
+            "count": state.get("count", 0),
+            "countVisible": state.get("count-visible", False),
+            "progress": state.get("progress", 0.0),
+            "progressVisible": state.get("progress-visible", False),
+            "urgent": state.get("urgent", False),
+        } for app, (_, state) in latest.items()}
+
+
+def run():
+    # Keep state logic importable/testable without a graphical session or GI.
+    import gi
+    gi.require_version("Gio", "2.0")
+    from gi.repository import Gio, GLib
+    try:
+        gi.require_version("GLibUnix", "2.0")
+        from gi.repository import GLibUnix
+        add_signal = GLibUnix.signal_add
+    except (ImportError, ValueError):
+        add_signal = GLib.unix_signal_add
+
+    state = LauncherState()
+    loop = GLib.MainLoop()
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    pending = 0
+    owned = False
+    last = None
+
+    def publish():
+        nonlocal pending, last
+        pending = 0
+        value = {"ready": True, "ownsUnityName": owned, "entries": state.snapshot()}
+        line = json.dumps(value, sort_keys=True, allow_nan=False)
+        if line != last:
+            try:
+                print(line, flush=True)
+            except BrokenPipeError:
+                loop.quit()
+                return False
+            last = line
+        return False
+
+    def schedule():
+        nonlocal pending
+        if not pending:
+            pending = GLib.timeout_add(30, publish)
+
+    def update(connection, sender, path, interface, member, parameters, user_data):
+        if parameters.get_type_string() != "(sa{sv})":
+            return
+        uri, properties = parameters.unpack()
+        if state.update(sender, uri, properties):
+            schedule()
+
+    def owner_changed(connection, sender, path, interface, member, parameters, user_data):
+        name, old, new = parameters.unpack()
+        if name.startswith(":") and old and not new and state.remove_sender(name):
+            schedule()
+
+    def name_acquired(connection, name):
+        nonlocal owned
+        owned = True
+        schedule()
+
+    def name_lost(connection, name):
+        nonlocal owned
+        owned = False
+        schedule()
+
+    bus.signal_subscribe(None, "com.canonical.Unity.LauncherEntry", "Update", None,
+                         None, Gio.DBusSignalFlags.NONE, update, None)
+    bus.signal_subscribe("org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged",
+                         "/org/freedesktop/DBus", None, Gio.DBusSignalFlags.NONE, owner_changed, None)
+    # libunity applications often replay their state when this name appears.
+    # Do not replace another dock that already owns it.
+    owner = Gio.bus_own_name_on_connection(bus, "com.canonical.Unity", Gio.BusNameOwnerFlags.NONE,
+                                         name_acquired, name_lost)
+    bus.connect("closed", lambda *_: loop.quit())
+    # Also exit if the UI dies abruptly while no application is sending updates.
+    # Otherwise an orphan could retain the Unity bus name indefinitely.
+    GLib.io_add_watch(sys.stdout.fileno(), GLib.PRIORITY_DEFAULT,
+                     GLib.IOCondition.HUP | GLib.IOCondition.ERR,
+                     lambda *_: (loop.quit(), False)[1])
+    add_signal(GLib.PRIORITY_DEFAULT, signal.SIGTERM, lambda: (loop.quit(), False)[1])
+    add_signal(GLib.PRIORITY_DEFAULT, signal.SIGINT, lambda: (loop.quit(), False)[1])
+    publish()
+    try:
+        loop.run()
+    finally:
+        Gio.bus_unown_name(owner)
+
+
+if __name__ == "__main__":
+    try:
+        run()
+    except (ImportError, ValueError, RuntimeError) as error:
+        print(f"dock-badges: {error}; install Python GObject/Gio bindings", file=sys.stderr)
+        raise SystemExit(1)

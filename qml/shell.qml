@@ -36,6 +36,34 @@ ShellRoot {
     property var menuItem: null
     property var clients: []
     property var launches: ({})
+    property var launcherEntries: ({})
+    property var urgentWindows: ({})
+    property bool badgeBridgeReady: false
+    property bool ownsUnityName: false
+    Process {
+        id: badgeBridge
+        command: [Quickshell.env("DOCK_DBUS_PYTHON") || "/usr/bin/python3",
+            Quickshell.env("DOCK_BADGE_HELPER") || root.helper.replace(/dockctl$/, "dock-badges")]
+        running: true
+        stderr: SplitParser { onRead: function(line) { console.warn("Dock badges:", line) } }
+        stdout: SplitParser {
+            onRead: function(line) {
+                try {
+                    var state = JSON.parse(line)
+                    root.launcherEntries = state.entries || {}
+                    root.badgeBridgeReady = state.ready === true
+                    root.ownsUnityName = state.ownsUnityName === true
+                } catch (error) { console.warn("Dock badges:", error) }
+            }
+        }
+        onExited: {
+            root.launcherEntries = {}
+            root.badgeBridgeReady = false
+            root.ownsUnityName = false
+            badgeRetry.restart()
+        }
+    }
+    Timer { id: badgeRetry; interval: 10000; onTriggered: badgeBridge.running = true }
     signal previewRequested(string key)
     function alpha(color, opacity) { var c = Qt.color(color); return Qt.rgba(c.r, c.g, c.b, opacity) }
     Process {
@@ -122,14 +150,22 @@ ShellRoot {
             var ws = window.workspace
             windows.push({ key: app ? app.id : appId, hasEntry: true, wayland: wl,
                 address: window.address, title: window.title, activated: window.activated,
+                urgent: window.urgent === true || root.urgentWindows[DockModel.windowAddress(window.address)] === true,
                 workspaceId: ws ? ws.id : -1,
                 minimized: !!ws && DockModel.isMinimizedWorkspace(ws.name) })
         }
-        return DockModel.buildItems(pins, windows)
+        var entries = {}
+        for (var key in root.launcherEntries) {
+            var launcher = root.entry(key)
+            entries[DockModel.normalizeId(launcher ? launcher.id : key)] = root.launcherEntries[key]
+        }
+        return DockModel.withLauncherEntries(DockModel.buildItems(pins, windows), entries)
     }
     Connections {
         target: Hyprland
         function onRawEvent(event) {
+            if (["urgent", "activewindowv2", "closewindow"].indexOf(event.name) >= 0)
+                root.urgentWindows = DockModel.urgencyEvent(root.urgentWindows, event.name, event.data)
             if (["configreloaded", "fullscreen", "movewindowv2"].indexOf(event.name) >= 0) {
                 Hyprland.refreshToplevels()
                 Hyprland.refreshWorkspaces()
@@ -142,11 +178,13 @@ ShellRoot {
         function apps(): void { root.appsOpen = !root.appsOpen }
         function settings(): void { root.dockSettingsOpen = true }
         function status(): string {
-            return JSON.stringify({ edge: root.edge, size: root.dockSize, magnification: root.dockMagnification, settingsOpen: root.dockSettingsOpen, panels: Array.from(dockVariants.instances).map(function(panel) {
+            return JSON.stringify({ edge: root.edge, size: root.dockSize, magnification: root.dockMagnification, settingsOpen: root.dockSettingsOpen,
+                badges: { ready: root.badgeBridgeReady, ownsUnityName: root.ownsUnityName }, panels: Array.from(dockVariants.instances).map(function(panel) {
                 return { screen: panel.screen.name, expanded: panel.expanded, overlapping: panel.overlapping, reveal: panel.reveal, preview: panel.previewKey,
                     resizing: panel.shelfItem.resizing, resizeHandle: panel.shelfItem.resizeHandleGeometry() }
             }), apps: root.items.map(function(item) {
-                return { key: item.key, windows: item.windows.length, minimized: item.windows.filter(function(w) { return w.minimized }).length }
+                return { key: item.key, windows: item.windows.length, minimized: item.windows.filter(function(w) { return w.minimized }).length,
+                    activity: item.activity, urgent: item.urgent }
             }) })
         }
         function activate(key: string): void {
