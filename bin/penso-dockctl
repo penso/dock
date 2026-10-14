@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+"""Persistent settings and Hyprland window actions for Penso Dock."""
+import argparse
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import tempfile
+
+CONFIG_DIR = Path(os.environ.get("PENSO_DOCK_CONFIG_DIR", str(Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "penso-dock")))
+CONFIG = CONFIG_DIR / "settings.json"
+HYPRCTL = os.environ.get("PENSO_DOCK_HYPRCTL", "hyprctl")
+BACKEND = os.environ.get("PENSO_DOCK_BACKEND", "lua")
+DEFAULTS = {"dock": {"position": "bottom", "pinned": [], "autohide": False, "intellihide": True, "size": 40, "magnification": 132}}
+THEME = {"base": "#1a1b26", "surface": "#24283b", "text": "#c0caf5", "blue": "#7aa2f7", "muted": "#787c99"}
+
+
+def ctl(*args, json_output=False):
+    result = subprocess.run([HYPRCTL, *args, *(["-j"] if json_output else [])],
+                            check=True, capture_output=True, text=True, timeout=5)
+    if result.stdout.lower().startswith(("err", "couldn't", "unknown")):
+        raise RuntimeError(result.stdout.strip())
+    return json.loads(result.stdout) if json_output else result.stdout
+
+
+def atomic_write(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    name = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, delete=False) as stream:
+            name = stream.name
+            json.dump(value, stream, indent=2)
+            stream.write("\n")
+        os.replace(name, path)
+    finally:
+        if name and os.path.exists(name):
+            os.unlink(name)
+
+
+def load():
+    config = json.loads(CONFIG.read_text()) if CONFIG.exists() else {}
+    return {**config, "dock": {**DEFAULTS["dock"], **config.get("dock", {})}}
+
+
+def window(address=None):
+    if address:
+        if not re.fullmatch(r"0x[0-9a-fA-F]+", address):
+            raise ValueError("Invalid window address")
+        return next((w for w in ctl("clients", json_output=True) if w["address"] == address), None)
+    return ctl("activewindow", json_output=True)
+
+
+def dispatch(lua, classic, argument):
+    if BACKEND == "lua":
+        return ctl("dispatch", lua)
+    if BACKEND == "classic":
+        return ctl("dispatch", classic, argument)
+    raise ValueError("PENSO_DOCK_BACKEND must be lua or classic")
+
+
+def move(address, workspace):
+    dispatch(f'hl.dsp.window.move({{ workspace = "{workspace}", follow = false, window = "address:{address}" }})',
+             "movetoworkspacesilent", f"{workspace},address:{address}")
+
+
+def restore(address=None):
+    if address is None:
+        minimized = [w for w in ctl("clients", json_output=True) if w["workspace"]["name"] == "special:minimized"]
+        if not minimized:
+            return
+        address = min(minimized, key=lambda w: w.get("focusHistoryID", 999))["address"]
+    w = window(address)
+    if not w:
+        return
+    address = w["address"]
+    if w["workspace"]["name"] == "special:minimized":
+        workspace = int(ctl("activeworkspace", json_output=True)["id"])
+        if workspace < 1:
+            return
+        move(address, str(workspace))
+    dispatch(f'hl.dsp.focus({{ window = "address:{address}" }})', "focuswindow", f"address:{address}")
+    dispatch(f'hl.dsp.window.alter_zorder({{ mode = "top", window = "address:{address}" }})', "alterzorder", f"top,address:{address}")
+
+
+def desktop_id(value):
+    value = value.removesuffix(".desktop")
+    if not value or "/" in value or any(c.isspace() for c in value):
+        raise argparse.ArgumentTypeError("Expected a desktop file ID, not a path")
+    return value
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="command", required=True)
+    for name in ("init", "status"):
+        sub.add_parser(name)
+    for name in ("focus", "restore", "minimize"):
+        sub.add_parser(name).add_argument("address", nargs="?")
+    sub.add_parser("close").add_argument("address")
+    for name in ("pin", "unpin", "pin-at", "reorder"):
+        p = sub.add_parser(name)
+        p.add_argument("desktop_id", type=desktop_id)
+        if name == "pin-at":
+            p.add_argument("index", type=int)
+        elif name == "reorder":
+            p.add_argument("target_id", type=desktop_id)
+    sub.add_parser("position").add_argument("edge", choices=("left", "right", "top", "bottom"))
+    p = sub.add_parser("appearance")
+    p.add_argument("size", type=int, choices=range(24, 73), metavar="24..72")
+    p.add_argument("magnification", type=int, choices=range(100, 201), metavar="100..200")
+    for name in ("autohide", "intellihide"):
+        sub.add_parser(name).add_argument("value", choices=("on", "off", "toggle"))
+    args = parser.parse_args()
+    if args.command in ("focus", "restore"):
+        return restore(args.address)
+    if args.command in ("close", "minimize"):
+        w = window(args.address)
+        if not w:
+            return
+        address = w["address"]
+        if args.command == "close":
+            dispatch(f'hl.dsp.window.close({{ window = "address:{address}" }})', "closewindow", f"address:{address}")
+        elif w["workspace"]["id"] >= 1:
+            move(address, "special:minimized")
+        return
+    if args.command == "status":
+        print(json.dumps(load(), indent=2))
+        return
+    CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    with CONFIG.with_suffix(".lock").open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        config = load()
+        dock = config["dock"]
+        pins = list(dock["pinned"])
+        if args.command == "position":
+            dock["position"] = args.edge
+        elif args.command == "appearance":
+            dock.update(size=args.size, magnification=args.magnification)
+        elif args.command in ("autohide", "intellihide"):
+            dock[args.command] = not dock[args.command] if args.value == "toggle" else args.value == "on"
+        elif args.command == "pin-at":
+            pins = [p for p in pins if p != args.desktop_id]
+            pins.insert(max(0, min(len(pins), args.index)), args.desktop_id)
+        elif args.command == "pin" and args.desktop_id not in pins:
+            pins.append(args.desktop_id)
+        elif args.command == "unpin":
+            pins = [p for p in pins if p != args.desktop_id]
+        elif args.command == "reorder" and args.desktop_id != args.target_id and args.desktop_id in pins and args.target_id in pins:
+            index = pins.index(args.target_id)
+            pins.remove(args.desktop_id)
+            pins.insert(index, args.desktop_id)
+        dock["pinned"] = pins
+        atomic_write(CONFIG, config)
+        if args.command == "init" and not (CONFIG.parent / "theme.json").exists():
+            atomic_write(CONFIG.parent / "theme.json", THEME)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        raise SystemExit(f"penso-dock: {error}")

@@ -1,0 +1,21 @@
+#!/bin/sh
+set -eu
+self=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ -f "$self/../qml/shell.qml" ]; then
+    data=$(CDPATH= cd -- "$self/.." && pwd)
+else
+    data="${XDG_DATA_HOME:-$HOME/.local/share}/penso-dock"
+fi
+export PENSO_DOCK_CONFIG_DIR="${PENSO_DOCK_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/penso-dock}"
+export PENSO_DOCK_HELPER="$data/bin/penso-dockctl"
+export QT_QUICK_CONTROLS_STYLE="${QT_QUICK_CONTROLS_STYLE:-Basic}"
+python3 "$PENSO_DOCK_HELPER" init
+if [ "${1:-}" = ctl ]; then
+    shift
+    exec python3 "$PENSO_DOCK_HELPER" "$@"
+fi
+if [ "${1:-}" = ipc ]; then
+    shift
+    exec "${PENSO_DOCK_QUICKSHELL:-quickshell}" -p "$data/qml" ipc call dock "$@"
+fi
+exec "${PENSO_DOCK_QUICKSHELL:-quickshell}" -p "$data/qml" --no-duplicate "$@"
