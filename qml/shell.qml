@@ -4,7 +4,6 @@ import QtQuick.Layouts
 import QtQuick.Effects
 import Quickshell
 import Quickshell.Io
-import Quickshell.Hyprland
 import Quickshell.Wayland
 import "DockModel.js" as DockModel
 
@@ -13,6 +12,20 @@ ShellRoot {
     readonly property string home: Quickshell.env("HOME")
     readonly property string configDir: Quickshell.env("DOCK_CONFIG_DIR") || ((Quickshell.env("XDG_CONFIG_HOME") || home + "/.config") + "/dock")
     readonly property string helper: Quickshell.env("DOCK_HELPER") || decodeURIComponent(Qt.resolvedUrl("../bin/dockctl").toString().replace(/^file:\/\//, ""))
+    readonly property string compositorChoice: Quickshell.env("DOCK_COMPOSITOR") || "auto"
+    property bool hyprlandUnavailable: false
+    readonly property bool useHyprland: !hyprlandUnavailable && (compositorChoice === "hyprland"
+        || (compositorChoice === "auto" && !!Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE")))
+    readonly property var backend: compositorLoader.item
+    Loader {
+        id: compositorLoader
+        source: Qt.resolvedUrl(root.useHyprland ? "backends/HyprlandBackend.qml" : "backends/WaylandBackend.qml")
+        onLoaded: item.controller = root
+        onStatusChanged: if (status === Loader.Error && root.useHyprland && root.compositorChoice === "auto") {
+            console.warn("Hyprland integration unavailable; using the generic Wayland backend")
+            root.hyprlandUnavailable = true
+        }
+    }
     property var settings: ({ dock: { position: "bottom", pinned: [], autohide: false } })
     property var palette: ({ base: "#eff1f5", surface: "#dce0e8", text: "#4c4f69", blue: "#1e66f5", muted: "#8c8fa1" })
     readonly property string edge: DockModel.normalizePosition(settings.dock.position)
@@ -34,10 +47,8 @@ ShellRoot {
     }
     function saveAppearance() { action(["appearance", String(dockSize), String(dockMagnification)]) }
     property var menuItem: null
-    property var clients: []
     property var launches: ({})
     property var launcherEntries: ({})
-    property var urgentWindows: ({})
     property bool badgeBridgeReady: false
     property bool ownsUnityName: false
     Process {
@@ -66,12 +77,6 @@ ShellRoot {
     Timer { id: badgeRetry; interval: 10000; onTriggered: badgeBridge.running = true }
     signal previewRequested(string key)
     function alpha(color, opacity) { var c = Qt.color(color); return Qt.rgba(c.r, c.g, c.b, opacity) }
-    Process {
-        id: geometryPoll
-        command: [Quickshell.env("DOCK_HYPRCTL") || "hyprctl", "clients", "-j"]
-        stdout: StdioCollector { onStreamFinished: { try { root.clients = JSON.parse(text) } catch (e) {} } }
-    }
-    Timer { interval: 400; running: root.settings.dock.intellihide !== false; repeat: true; triggeredOnStart: true; onTriggered: if (!geometryPoll.running) geometryPoll.running = true }
 
     function action(args) { Quickshell.execDetached(["python3", helper].concat(args)) }
     function entry(key) { return DesktopEntries.byId(key) || DesktopEntries.heuristicLookup(key) }
@@ -80,7 +85,8 @@ ShellRoot {
         return Quickshell.iconPath(app && app.icon ? app.icon : "application-x-executable", true) || Qt.resolvedUrl("icons/application.svg")
     }
     function name(key) { var app = entry(key); return app ? app.name : key }
-    function address(window) { return window.address.indexOf("0x") === 0 ? window.address : "0x" + window.address }
+    function focusWindow(window) { if (backend) backend.activate(window) }
+    function closeWindow(window) { if (backend) backend.close(window) }
     function launch(key) {
         var app = entry(key)
         if (app) {
@@ -105,10 +111,9 @@ ShellRoot {
     }
     function activate(item) {
         if (!item.windows.length) { launch(item.key); return }
-        var monitor = Hyprland.focusedMonitor
-        var ws = monitor && monitor.activeWorkspace ? monitor.activeWorkspace.id : -1
+        var ws = backend ? backend.activeWorkspace : -1
         var index = DockModel.pickWindow(item.windows, ws)
-        action(["focus", address(item.windows[index])])
+        focusWindow(item.windows[index])
     }
 
     FileView {
@@ -139,20 +144,11 @@ ShellRoot {
     readonly property var items: {
         var pins = DockModel.pinnedIds(settings.dock, {}).filter(function(key) { return !!root.entry(key) })
         var windows = []
-        var all = Hyprland.toplevels.values
+        var all = backend ? backend.windows : []
         for (var i = 0; i < all.length; i++) {
             var window = all[i]
-            var wl = window.wayland
-            var raw = window.lastIpcObject
-            var appId = wl ? wl.appId : (raw["class"] || "")
-            if (!appId || (wl && wl.parent)) continue
-            var app = DesktopEntries.heuristicLookup(appId)
-            var ws = window.workspace
-            windows.push({ key: app ? app.id : appId, hasEntry: true, wayland: wl,
-                address: window.address, title: window.title, activated: window.activated,
-                urgent: window.urgent === true || root.urgentWindows[DockModel.windowAddress(window.address)] === true,
-                workspaceId: ws ? ws.id : -1,
-                minimized: !!ws && DockModel.isMinimizedWorkspace(ws.name) })
+            var app = DesktopEntries.heuristicLookup(window.appId)
+            windows.push(Object.assign({}, window, { key: app ? app.id : window.appId, hasEntry: true }))
         }
         var entries = {}
         for (var key in root.launcherEntries) {
@@ -161,24 +157,14 @@ ShellRoot {
         }
         return DockModel.withLauncherEntries(DockModel.buildItems(pins, windows), entries)
     }
-    Connections {
-        target: Hyprland
-        function onRawEvent(event) {
-            if (["urgent", "activewindowv2", "closewindow"].indexOf(event.name) >= 0)
-                root.urgentWindows = DockModel.urgencyEvent(root.urgentWindows, event.name, event.data)
-            if (["configreloaded", "fullscreen", "movewindowv2"].indexOf(event.name) >= 0) {
-                Hyprland.refreshToplevels()
-                Hyprland.refreshWorkspaces()
-            }
-        }
-    }
 
     IpcHandler {
         target: "dock"
         function apps(): void { root.appsOpen = !root.appsOpen }
         function settings(): void { root.dockSettingsOpen = true }
         function status(): string {
-            return JSON.stringify({ edge: root.edge, size: root.dockSize, magnification: root.dockMagnification, settingsOpen: root.dockSettingsOpen,
+            return JSON.stringify({ compositor: root.backend ? root.backend.name : "loading", capabilities: root.backend ? root.backend.capabilities : {},
+                edge: root.edge, size: root.dockSize, magnification: root.dockMagnification, settingsOpen: root.dockSettingsOpen,
                 badges: { ready: root.badgeBridgeReady, ownsUnityName: root.ownsUnityName }, panels: Array.from(dockVariants.instances).map(function(panel) {
                 return { screen: panel.screen.name, expanded: panel.expanded, overlapping: panel.overlapping, reveal: panel.reveal, preview: panel.previewKey,
                     resizing: panel.shelfItem.resizing, resizeHandle: panel.shelfItem.resizeHandleGeometry() }
@@ -192,6 +178,12 @@ ShellRoot {
             if (item) root.activate(item)
         }
         function preview(key: string): void { root.previewRequested(key) }
+        function minimize(): void { if (root.backend) root.backend.minimizeActive() }
+        function restore(): void { if (root.backend) root.backend.restore() }
+        function closeWindow(key: string): void {
+            var item = root.items.find(function(i) { return i.key === key })
+            if (item && item.windows.length) root.closeWindow(item.windows[DockModel.pickWindow(item.windows, root.backend.activeWorkspace)])
+        }
     }
 
     Variants {
@@ -201,8 +193,8 @@ ShellRoot {
             id: dock
             required property var modelData
             screen: modelData
-            readonly property var monitor: Hyprland.monitorFor(screen)
-            readonly property int workspace: monitor && monitor.activeWorkspace ? monitor.activeWorkspace.id : -1
+            readonly property var monitor: root.backend ? root.backend.monitorFor(screen) : null
+            readonly property int workspace: root.backend ? root.backend.workspaceFor(monitor) : -1
             readonly property bool enabledHere: workspace >= 1
             property bool hovered: false
             property string previewKey: ""
@@ -215,15 +207,12 @@ ShellRoot {
             function dismissPreview() { previewClose.restart() }
             readonly property var previewItem: root.items.find(function(i) { return i.key === dock.previewKey })
             readonly property bool overlapping: {
-                if (!monitor) return false
+                if (!monitor || !root.backend || !root.backend.capabilities.overlap) return false
                 var w = root.vertical ? 84 * root.dockUnit : shelf.visibleLength
                 var h = root.vertical ? shelf.visibleLength : 84 * root.dockUnit
                 var x = monitor.x + (root.edge === "left" ? 0 : root.edge === "right" ? screen.width - w : (screen.width - w) / 2 + shelf.axisOffset)
                 var y = monitor.y + (root.edge === "top" ? dock.margins.top : root.edge === "bottom" ? screen.height - h : (screen.height - h) / 2 + shelf.axisOffset)
-                return root.clients.some(function(c) {
-                    if (!c.mapped || c.hidden || !c.workspace || (c.workspace.id !== dock.workspace && !c.pinned)) return false
-                    return c.at[0] < x + w && c.at[0] + c.size[0] > x && c.at[1] < y + h && c.at[1] + c.size[1] > y
-                })
+                return root.backend.overlaps(dock.workspace, Qt.rect(x, y, w, h))
             }
             readonly property bool expanded: hovered || dragging || root.dockSettingsOpen || previews.visible || dockMenu.opened || appMenu.opened || (!root.settings.dock.autohide && !(root.settings.dock.intellihide !== false && overlapping))
             readonly property real length: root.vertical ? screen.height - 120 : screen.width - 80
@@ -250,7 +239,7 @@ ShellRoot {
                 right: root.edge === "right"
             }
             margins {
-                top: root.edge === "top" && monitor && monitor.lastIpcObject.reserved ? monitor.lastIpcObject.reserved[1] : 0
+                top: root.edge === "top" && root.backend ? root.backend.topMargin(monitor) : 0
                 bottom: 0
                 left: 0
                 right: 0
@@ -354,14 +343,14 @@ ShellRoot {
                                 text: (card.modelData.minimized ? "Restore · " : "") + card.modelData.title
                                 color: root.palette.text; font.pixelSize: 12; elide: Text.ElideRight; maximumLineCount: 2; wrapMode: Text.Wrap
                             }
-                            MouseArea { id: cardMouse; anchors.fill: parent; hoverEnabled: true; onClicked: { root.action(["focus", root.address(card.modelData)]); dock.previewKey = "" } }
+                            MouseArea { id: cardMouse; anchors.fill: parent; hoverEnabled: true; onClicked: { root.focusWindow(card.modelData); dock.previewKey = "" } }
                             Rectangle {
                                 anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 13
                                 width: 24; height: 24; radius: 12
                                 color: closeMouse.containsMouse ? "#e06c75" : "#cc20222c"
                                 Text { anchors.centerIn: parent; text: "×"; font.pixelSize: 18; color: "white" }
                                 ToolTip.visible: closeMouse.containsMouse; ToolTip.text: "Close window"
-                                MouseArea { id: closeMouse; anchors.fill: parent; hoverEnabled: true; onClicked: root.action(["close", root.address(card.modelData)]) }
+                                MouseArea { id: closeMouse; anchors.fill: parent; hoverEnabled: true; onClicked: root.closeWindow(card.modelData) }
                             }
                         }
                         ScrollBar.horizontal: ScrollBar {}
@@ -384,9 +373,9 @@ ShellRoot {
                 }
                 DockMenuSeparator {}
                 DockMenuItem { text: "Auto-hide"; checkable: true; checked: root.settings.dock.autohide; onTriggered: root.action(["autohide", "toggle"]) }
-                DockMenuItem { text: "Hide when overlapped"; checkable: true; checked: root.settings.dock.intellihide !== false; onTriggered: root.action(["intellihide", "toggle"]) }
+                DockMenuItem { text: "Hide when overlapped"; enabled: !!root.backend && root.backend.capabilities.overlap; checkable: true; checked: root.settings.dock.intellihide !== false; onTriggered: root.action(["intellihide", "toggle"]) }
                 DockMenuSeparator {}
-                DockMenuItem { text: "Restore minimized window"; glyph: "↥"; enabled: root.items.some(function(i) { return i.windows.some(function(w) { return w.minimized }) }); onTriggered: root.action(["restore"]) }
+                DockMenuItem { text: "Restore minimized window"; glyph: "↥"; enabled: root.items.some(function(i) { return i.windows.some(function(w) { return w.minimized }) }); onTriggered: if (root.backend) root.backend.restore() }
             }
             DockMenu {
                 id: appMenu
@@ -404,7 +393,7 @@ ShellRoot {
                         required property var modelData
                         glyph: modelData.minimized ? "↥" : "▣"
                         text: (modelData.minimized ? "Restore: " : "Focus: ") + modelData.title
-                        onTriggered: root.action(["focus", root.address(modelData)])
+                        onTriggered: root.focusWindow(modelData)
                     }
                     onObjectAdded: function(index, object) { appMenu.insertItem(index + 4, object) }
                     onObjectRemoved: function(index, object) { appMenu.removeItem(object) }
@@ -418,7 +407,7 @@ ShellRoot {
     PanelWindow {
         id: appGrid
         visible: root.appsOpen
-        screen: Hyprland.focusedMonitor ? Quickshell.screens.find(function(s) { return s.name === Hyprland.focusedMonitor.name }) : Quickshell.screens[0]
+        screen: root.backend && root.backend.focusedScreen ? root.backend.focusedScreen : Quickshell.screens[0]
         color: "transparent"
         implicitWidth: Math.min(820, screen ? screen.width - 80 : 820)
         implicitHeight: Math.min(620, screen ? screen.height - 120 : 620)

@@ -9,10 +9,30 @@ fi
 export DOCK_CONFIG_DIR="${DOCK_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/dock}"
 export DOCK_HELPER="$data/bin/dockctl"
 export DOCK_BADGE_HELPER="${DOCK_BADGE_HELPER:-$data/bin/dock-badges}"
+export DOCK_COMPOSITOR="${DOCK_COMPOSITOR:-auto}"
+case "$DOCK_COMPOSITOR" in
+    auto)
+        if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then compositor=hyprland; else compositor=wayland; fi
+        ;;
+    hyprland|wayland) compositor="$DOCK_COMPOSITOR" ;;
+    *) echo "dock: DOCK_COMPOSITOR must be auto, hyprland, or wayland" >&2; exit 2 ;;
+esac
 export QT_QUICK_CONTROLS_STYLE="${QT_QUICK_CONTROLS_STYLE:-Basic}"
 python3 "$DOCK_HELPER" init
 if [ "${1:-}" = ctl ]; then
     shift
+    if [ "$compositor" = wayland ]; then
+        case "${1:-}" in
+            minimize|restore)
+                if [ "$#" -ne 1 ]; then echo "dock: use 'dock ipc activate APP_ID' to target an application" >&2; exit 2; fi
+                exec "${DOCK_QUICKSHELL:-quickshell}" -p "$data/qml" ipc call dock "$1"
+                ;;
+            focus|close)
+                echo "dock: use 'dock ipc activate APP_ID' or 'dock ipc closeWindow APP_ID' with the Wayland backend" >&2
+                exit 2
+                ;;
+        esac
+    fi
     exec python3 "$DOCK_HELPER" "$@"
 fi
 if [ "${1:-}" = ipc ]; then

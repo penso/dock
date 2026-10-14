@@ -23,7 +23,7 @@ def install():
     # systemd expands percent specifiers; quote paths for homes containing spaces.
     executable = str(bindir / "dock").replace("%", "%%").replace("\\", "\\\\").replace('"', '\\"')
     unit = f'''[Unit]
-Description=Dock for Hyprland
+Description=Dock for Wayland desktops
 PartOf=graphical-session.target
 After=graphical-session.target
 
@@ -35,7 +35,7 @@ RestartSec=3
 '''
     (config / "systemd/user/dock.service").write_text(unit)
     print(f"Installed {bindir / 'dock'}")
-    print("Run dock from a Hyprland session. See README.md for autostart.")
+    print("Run dock from a compatible Wayland session. See README.md for autostart.")
 
 
 if __name__ == "__main__":
