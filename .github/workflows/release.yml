@@ -1,0 +1,60 @@
+name: Arch package
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - run: pacman -Syu --noconfirm python git
+      - uses: actions/checkout@v4
+      - name: Generate source archive and recipe
+        shell: bash
+        run: |
+          if [[ $GITHUB_REF_TYPE == "tag" && $GITHUB_REF_NAME != "v$(cat VERSION)" ]]; then
+            echo "The release tag must match VERSION" >&2
+            exit 1
+          fi
+          export SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)
+          echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" >> "$GITHUB_ENV"
+          python tools/package_arch.py --release
+      - name: Build architecture-independent package
+        shell: bash
+        run: |
+          useradd --create-home builder
+          chown -R builder:builder dist/arch
+          cd dist/arch
+          runuser -u builder -- makepkg --nodeps --noconfirm --force
+          runuser -u builder -- makepkg --printsrcinfo > .SRCINFO
+          tar -czf dock-quickshell-recipe.tar.gz PKGBUILD .SRCINFO .omarchy
+          sha256sum *.pkg.tar.zst >> SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dock-arch-package
+          path: |
+            dist/arch/*.pkg.tar.zst
+            dist/arch/dock-*.tar.gz
+            dist/arch/SHA256SUMS
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dock-arch-package
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          overwrite_files: false
+          fail_on_unmatched_files: true
+          files: dist/*

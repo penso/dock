@@ -26,12 +26,16 @@ def install():
 Description=Dock for Wayland desktops
 PartOf=graphical-session.target
 After=graphical-session.target
+ConditionEnvironment=WAYLAND_DISPLAY
 
 [Service]
 ExecStart="{executable}"
 Environment=QT_QPA_PLATFORM=wayland
 Restart=on-failure
 RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target
 '''
     (config / "systemd/user/dock.service").write_text(unit)
     print(f"Installed {bindir / 'dock'}")

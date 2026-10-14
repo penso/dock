@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+"""Opt-in systemd user-session integration for installed copies of Dock."""
+import argparse
+import os
+import subprocess
+
+
+def run(*args):
+    subprocess.run(args, check=True)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    enable = commands.add_parser("enable", help="Start Dock at graphical login")
+    enable.add_argument("--no-start", action="store_true", help="Enable for the next login only")
+    commands.add_parser("disable", help="Stop Dock and disable graphical-login autostart")
+    commands.add_parser("restart", help="Restart the installed Dock user service")
+    args = parser.parse_args()
+    if args.command == "disable":
+        run("systemctl", "--user", "disable", "--now", "dock.service")
+        return
+    # Import only session identity, not launcher-resolved backend choices.
+    # The installed launcher detects the compositor/dispatcher at each start.
+    names = [name for name in ("WAYLAND_DISPLAY", "DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE",
+             "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_DATA_DIRS", "HYPRLAND_INSTANCE_SIGNATURE", "OMARCHY_PATH", "PATH")
+             if name in os.environ]
+    if names:
+        run("dbus-update-activation-environment", "--systemd", *names)
+    run("systemctl", "--user", "daemon-reload")
+    if args.command == "restart":
+        run("systemctl", "--user", "restart", "dock.service")
+    elif args.no_start:
+        run("systemctl", "--user", "enable", "dock.service")
+    else:
+        run("systemctl", "--user", "enable", "--now", "dock.service")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, subprocess.SubprocessError) as error:
+        raise SystemExit(f"dock: could not configure the installed user service: {error}")

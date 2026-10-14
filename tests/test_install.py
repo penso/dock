@@ -13,7 +13,7 @@ class InstallTest(unittest.TestCase):
     def test_install_into_custom_xdg_paths_and_preserve_settings(self):
         with tempfile.TemporaryDirectory(prefix="dock install ") as tmp:
             home = Path(tmp)
-            env = {k: v for k, v in os.environ.items() if not k.startswith("DOCK_")}
+            env = {k: v for k, v in os.environ.items() if not k.startswith("DOCK_") and k != "HYPRLAND_INSTANCE_SIGNATURE"}
             env.update(HOME=str(home), XDG_CONFIG_HOME=str(home / "config"), XDG_DATA_HOME=str(home / "data"))
             subprocess.run(["python3", str(ROOT / "install.py")], env=env, check=True, capture_output=True)
             launcher = home / ".local/bin/dock"

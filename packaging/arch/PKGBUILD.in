@@ -1,0 +1,23 @@
+# Maintainer: Fabien Penso
+pkgname=dock-quickshell
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc='A macOS-inspired Wayland dock with magnification, badges and window previews'
+arch=('any')
+url='https://github.com/penso/dock'
+license=('MIT')
+depends=('quickshell>=0.3.2' 'python>=3.10' 'python-gobject' 'qt6-declarative' 'qt6-svg' 'qt6-imageformats' 'hicolor-icon-theme')
+optdepends=('hyprland: workspace-aware switching, overlap hiding and native urgency')
+source=("@SOURCE@")
+sha256sums=('@SHA256@')
+
+package() {
+  cd "$srcdir/dock-$pkgver"
+  install -Dm755 bin/dock "$pkgdir/usr/bin/dock"
+  install -d "$pkgdir/usr/share/dock"
+  cp -a qml bin config "$pkgdir/usr/share/dock/"
+  install -Dm644 packaging/dock.service "$pkgdir/usr/lib/systemd/user/dock.service"
+  install -Dm644 packaging/dock.desktop "$pkgdir/usr/share/applications/io.github.penso.dock.desktop"
+  install -Dm644 qml/icons/application.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/dock.svg"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

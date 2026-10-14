@@ -54,8 +54,10 @@ An X11 backend would additionally require an X11-capable panel implementation.
 
 `HyprlandBackend.qml` preserves workspace-aware switching, special-workspace
 minimization/restoration, urgency events, and client-rectangle overlap checks.
-It uses `dockctl` for window dispatchers. `DOCK_BACKEND=lua|classic` selects
-the Hyprland command syntax independently of `DOCK_COMPOSITOR`.
+It uses `dockctl` for window dispatchers. The launcher detects Lua support with
+the read-only query `hyprctl repl 'return type(hl.dsp.window.move)'` and otherwise
+uses classic dispatchers. `DOCK_BACKEND=lua|classic` overrides detection
+independently of `DOCK_COMPOSITOR`.
 
 ## Validation
 

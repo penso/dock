@@ -3,6 +3,8 @@ set -eu
 self=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 if [ -f "$self/../qml/shell.qml" ]; then
     data=$(CDPATH= cd -- "$self/.." && pwd)
+elif [ "$self" != "$HOME/.local/bin" ] && [ -f "$self/../share/dock/qml/shell.qml" ]; then
+    data=$(CDPATH= cd -- "$self/../share/dock" && pwd)
 else
     data="${XDG_DATA_HOME:-$HOME/.local/share}/dock"
 fi
@@ -17,8 +19,20 @@ case "$DOCK_COMPOSITOR" in
     hyprland|wayland) compositor="$DOCK_COMPOSITOR" ;;
     *) echo "dock: DOCK_COMPOSITOR must be auto, hyprland, or wayland" >&2; exit 2 ;;
 esac
+if [ "$compositor" = hyprland ] && { [ -z "${DOCK_BACKEND:-}" ] || [ "$DOCK_BACKEND" = auto ]; }; then
+    if [ "$("${DOCK_HYPRCTL:-hyprctl}" repl 'return type(hl.dsp.window.move)' 2>/dev/null || true)" = function ]; then
+        export DOCK_BACKEND=lua
+    else
+        export DOCK_BACKEND=classic
+    fi
+fi
 export QT_QUICK_CONTROLS_STYLE="${QT_QUICK_CONTROLS_STYLE:-Basic}"
 python3 "$DOCK_HELPER" init
+case "${1:-}" in
+    enable|disable|restart)
+        exec python3 "$data/bin/dock-session" "$@"
+        ;;
+esac
 if [ "${1:-}" = ctl ]; then
     shift
     if [ "$compositor" = wayland ]; then

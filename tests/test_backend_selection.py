@@ -46,6 +46,26 @@ class BackendSelectionTest(unittest.TestCase):
         self.assertIn("dock ipc activate APP_ID", result.stderr)
         self.assertFalse(self.output.exists())
 
+    def test_hyprland_dispatcher_detection_is_read_only(self):
+        hyprctl = self.home / "hyprctl"
+        probe = self.home / "probe"
+        capture = self.home / "backend"
+        qs = self.home / "fake-quickshell"
+        qs.write_text(f'#!/bin/sh\nprintf "%s" "$DOCK_BACKEND" > "{capture}"\n')
+        qs.chmod(0o755)
+        self.env.update(HYPRLAND_INSTANCE_SIGNATURE="test", DOCK_HYPRCTL=str(hyprctl))
+        for response, expected in (("function", "lua"), ("unknown request", "classic")):
+            hyprctl.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > "{probe}"\nprintf "%s\\n" "{response}"\n')
+            hyprctl.chmod(0o755)
+            result = self.invoke()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(capture.read_text(), expected)
+            self.assertEqual(probe.read_text().splitlines(), ["repl", "return type(hl.dsp.window.move)"])
+        probe.unlink()
+        self.env["DOCK_BACKEND"] = "classic"
+        self.assertEqual(self.invoke().returncode, 0)
+        self.assertFalse(probe.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

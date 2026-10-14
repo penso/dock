@@ -84,6 +84,27 @@ preview cards fall back to application icons.
 
 ## Installation
 
+### Omarchy quick install
+
+Inside your Omarchy desktop session:
+
+```sh
+git clone --depth 1 https://github.com/penso/dock.git
+cd dock
+./install-omarchy.sh
+```
+
+This installs dependencies through Omarchy's package helper, builds and installs
+the native **`dock-quickshell`** Arch package, and enables graphical-login
+autostart. It disables Omarchy's built-in dock plugin when present; use
+`--keep-omarchy-dock` to retain it. Classic/Lua Hyprland dispatchers are detected
+automatically. See the [Omarchy installation guide](docs/omarchy.md) for updates,
+removal, migration from a user-local install, and package publication status.
+
+The package is not yet published in Omarchy's repository or the AUR. Until this
+GitHub repository is public, cloning requires access to it. The generic per-user
+installation for other compatible desktops follows below.
+
 ### 1. Install the prerequisites
 
 - **Quickshell 0.3.2**, the tested version, with Wayland/toplevel and screencopy
@@ -128,18 +149,18 @@ For the generic Wayland backend:
 DOCK_COMPOSITOR=wayland ~/.local/bin/dock
 ```
 
-For Hyprland, choose the dispatcher syntax your version uses:
+On Hyprland, the launcher detects the installed dispatcher syntax:
 
 ```sh
-# Hyprland with the Lua API
 ~/.local/bin/dock
 
-# Hyprland with traditional dispatchers
+# Optional explicit override for traditional dispatchers
 DOCK_BACKEND=classic ~/.local/bin/dock
 ```
 
 Without an override, Dock detects Hyprland from the session environment and
-otherwise selects generic Wayland. The Lua integration was tested on a
+otherwise selects generic Wayland. It uses a read-only IPC query to distinguish
+Lua from classic Hyprland dispatchers. The Lua integration was tested on a
 Hyprland 0.56.0 development build; traditional dispatchers have unit coverage
 but have not been runtime-tested on an older compositor.
 
@@ -160,7 +181,7 @@ exec env DOCK_COMPOSITOR=wayland ~/.local/bin/dock
 **Hyprland with traditional configuration/dispatchers:**
 
 ```ini
-exec-once = env DOCK_BACKEND=classic ~/.local/bin/dock
+exec-once = ~/.local/bin/dock
 ```
 
 **Hyprland with Lua configuration:**
@@ -175,6 +196,15 @@ For other compatible sessions, add `~/.local/bin/dock` to their autostart facili
 
 <details>
 <summary>Using the optional systemd user service</summary>
+
+On Omarchy or another session that manages `graphical-session.target`, the
+installed launcher can configure autostart and import the session environment:
+
+```sh
+dock enable
+dock disable  # Stop and disable autostart
+dock restart  # Restart after an update
+```
 
 Start the service from your graphical session after importing its environment:
 
@@ -196,14 +226,17 @@ or set them in a service override with `systemctl --user edit dock.service`:
 Environment=DOCK_BACKEND=classic
 ```
 
-The installer creates the service but does not enable or start it. It is intended
-to be started by a graphical session, rather than enabled for every user login.
+The generic Python installer creates the service but does not enable or start
+it; the Omarchy setup script enables it. The service is tied to graphical sessions,
+not non-graphical user logins.
 
 </details>
 
 ### Update
 
-From your checkout:
+For an Omarchy package install, follow [these update instructions](docs/omarchy.md#update-a-checkout-built-package).
+For the per-user Python installation, run this from your checkout:
+
 
 ```sh
 git pull --ff-only
@@ -218,6 +251,10 @@ systemctl --user restart dock.service
 ```
 
 ### Uninstall
+
+For an Omarchy package install, use `dock disable` followed by
+`omarchy-pkg-drop dock-quickshell`; see [the Omarchy guide](docs/omarchy.md#remove).
+For the per-user Python installation:
 
 Stop Dock and remove its autostart entry. If using systemd, stop it with
 `systemctl --user stop dock.service`. Then remove the installed files:
@@ -296,7 +333,7 @@ The generic backend requests native minimization when available.
 | --- | --- |
 | `DOCK_CONFIG_DIR` | Settings directory; `$XDG_CONFIG_HOME/dock` |
 | `DOCK_COMPOSITOR` | `auto`, `hyprland`, or `wayland` |
-| `DOCK_BACKEND` | Hyprland dispatcher syntax: `lua` or `classic` |
+| `DOCK_BACKEND` | Hyprland dispatcher syntax: detected by default; override with `lua` or `classic` |
 | `DOCK_HYPRCTL` | Hyprland executable; `hyprctl` |
 | `DOCK_QUICKSHELL` | Quickshell executable; `quickshell` |
 | `DOCK_DBUS_PYTHON` | Python with GObject/Gio; `/usr/bin/python3` |
@@ -307,8 +344,8 @@ The generic backend requests native minimization when available.
 
 - **Dock does not appear:** run it from a terminal inside your Wayland session
   and inspect the output. Confirm your compositor provides both required protocols.
-- **Hyprland window actions fail:** check whether your version needs
-  `DOCK_BACKEND=classic`, or try `DOCK_COMPOSITOR=wayland`.
+- **Hyprland window actions fail:** try an explicit `DOCK_BACKEND=classic` or
+  `DOCK_BACKEND=lua`, or use `DOCK_COMPOSITOR=wayland`.
 - **No unread badge:** the app must publish LauncherEntry updates. Check the
   `badges.ready` field in `dock ipc status` and install GObject/Gio if missing.
 - **Previews show icons:** the compositor may not expose a compatible per-window
@@ -341,6 +378,7 @@ an isolated bus. Core tests also run in [GitHub Actions](https://github.com/pens
 - [Animation model](docs/animation.md)
 - [macOS Dock analysis notes](docs/apple-dock-analysis.md)
 - [Badge protocol](docs/badges.md)
+- [Omarchy packaging and release workflow](docs/omarchy.md)
 
 Use `DOCK_CONFIG_DIR=/tmp/dock-dev ./bin/dock` for separate development settings.
 

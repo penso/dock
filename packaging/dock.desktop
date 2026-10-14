@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Dock
+Comment=A macOS-inspired application dock for Wayland
+Exec=dock
+Icon=dock
+Terminal=false
+Categories=Utility;
+StartupNotify=false
