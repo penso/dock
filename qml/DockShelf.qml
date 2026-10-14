@@ -24,48 +24,41 @@ Item {
     property int dragIndex: -1
     property real dragPosition: 0
     property real pointer: 0
-    property real lensPointer: 0
-    property real lensVelocity: 0
+    readonly property real lensPointer: pointer
     property real lensAmount: 0
-    property real amountVelocity: 0
+    property real rampFrom: 0
+    property real rampTarget: 0
+    property real rampElapsed: 0
+    property real rampDuration: 0
+    property bool hoverActive: false
+    property bool labelReady: false
     readonly property bool dragging: dragKey !== ""
     readonly property int pinCount: controller.items.filter(function(i) { return i.pinned }).length
     readonly property bool divided: pinCount > 0 && pinCount < keys.length
     readonly property var order: dragging ? DockModel.dragOrder(keys, dragKey, dragIndex) : keys
     readonly property real baseLength: (keys.length + 1) * cell + (divided ? 16 * unit : 0) + 20 * unit
-    readonly property bool magnify: shelfHover.hovered && inHoverZone && !dragging && host.expanded
-    readonly property bool inHoverZone: {
-        var p = shelfHover.point.position
-        return p.x >= x && p.x <= x + width && p.y >= y && p.y <= y + height
+    readonly property bool magnify: shelfHover.hovered && hoverActive && !dragging && host.expanded
+    onMagnifyChanged: {
+        rampFrom = lensAmount
+        rampTarget = magnify ? 1 : 0
+        rampElapsed = 0
+        rampDuration = DockModel.fishDuration(cell * (maximumMagnification - 1) * (rampTarget - rampFrom)) / 1000
+        if (magnify) labelDelay.restart()
+        else { labelDelay.stop(); labelReady = false }
     }
+    Timer { id: labelDelay; interval: 180; onTriggered: shelf.labelReady = true }
     FrameAnimation {
-        running: Math.abs(shelf.lensAmount - (shelf.magnify ? 1 : 0)) > 0.0001
-            || Math.abs(shelf.amountVelocity) > 0.002
-            || (shelf.magnify && (Math.abs(shelf.lensPointer - shelf.pointer) > 0.02 || Math.abs(shelf.lensVelocity) > 0.05))
+        running: shelf.rampElapsed < shelf.rampDuration
         onTriggered: {
-            var dt = Math.max(0.001, frameTime)
-            var center = DockModel.springStep(shelf.lensPointer, shelf.lensVelocity, shelf.pointer, dt, 42)
-            var amount = DockModel.springStep(shelf.lensAmount, shelf.amountVelocity, shelf.magnify ? 1 : 0, dt, 30)
-            shelf.lensPointer = center.position; shelf.lensVelocity = center.velocity
-            shelf.lensAmount = amount.position; shelf.amountVelocity = amount.velocity
-            if (Math.abs(shelf.lensAmount - (shelf.magnify ? 1 : 0)) < 0.0001 && Math.abs(shelf.amountVelocity) < 0.002) {
-                shelf.lensAmount = shelf.magnify ? 1 : 0; shelf.amountVelocity = 0
-            }
+            shelf.rampElapsed = Math.min(shelf.rampDuration, shelf.rampElapsed + Math.max(0, frameTime))
+            shelf.lensAmount = DockModel.fishTransition(shelf.rampFrom, shelf.rampTarget, shelf.rampElapsed, shelf.rampDuration)
         }
     }
-    readonly property var layout: {
-        var result = []; var position = 10 * unit
-        for (var i = -1; i < order.length; i++) {
-            if (divided && i === pinCount) position += 16 * unit
-            var base = 10 * unit + (i + 1.5) * cell + (divided && i >= pinCount ? 16 * unit : 0)
-            var scale = 1 + lensAmount * (DockModel.magnification(base - lensPointer, cell * 3, maximumMagnification) - 1)
-            var extent = cell + (scale - 1) * iconSize
-            result.push({ key: i < 0 ? "" : order[i], position: position, extent: extent, scale: scale })
-            position += extent
-        }
-        return result
-    }
-    readonly property real naturalLength: layout.length ? layout[layout.length - 1].position + layout[layout.length - 1].extent + 10 * unit : 72 * unit
+    readonly property var lens: DockModel.lensLayout(order, pinCount, iconSize, maximumMagnification,
+        lensPointer, lensAmount, vertical ? host.height : host.width)
+    readonly property var layout: lens.items
+    readonly property real axisOffset: lens.offset
+    readonly property real naturalLength: lens.length
     readonly property real visibleLength: Math.min(naturalLength, vertical ? host.height : host.width)
     width: vertical ? depth : visibleLength
     height: vertical ? visibleLength : depth
@@ -87,13 +80,17 @@ Item {
     }
     function trackPointer() {
         var p = shelfHover.point.position
-        // Do not consult a derived hover binding in this signal handler: Qt
-        // may notify the point before reevaluating that binding.
-        if (p.x < x || p.x > x + width || p.y < y || p.y > y + height) return
-        // Read from the fixed panel, never an animated icon or its hit area.
         var axis = vertical ? p.y - y : p.x - x
-        pointer = axis + (baseLength - visibleLength) / 2 + (vertical ? viewport.contentY : viewport.contentX)
-        if (lensAmount < 0.001) { lensPointer = pointer; lensVelocity = 0 }
+        var cross = vertical ? p.x - x : p.y - y
+        var farEdge = edge === "bottom" || edge === "right"
+        var distance = farEdge ? depth - edgeGap - cross : cross - edgeGap
+        // Enter on the glass, retain the wave over enlarged icons. The empty
+        // upper part of the layer surface must not start a hover animation.
+        var reach = hoverActive ? Math.max(64 * unit, 16 * unit + iconSize * maximumMagnification + 6 * unit) : 64 * unit
+        hoverActive = axis >= 0 && axis <= visibleLength && distance >= -edgeGap && distance <= reach
+        if (!hoverActive) return
+        // Read from the fixed panel, never an animated icon or its hit area.
+        pointer = axis + axisOffset + (baseLength - visibleLength) / 2 + (vertical ? viewport.contentY : viewport.contentX)
     }
     function finishDrag(commit) {
         if (!dragging) return
@@ -115,7 +112,10 @@ Item {
         id: shelfHover
         parent: shelf.parent
         onPointChanged: shelf.trackPointer()
-        onHoveredChanged: if (hovered) shelf.trackPointer()
+        onHoveredChanged: {
+            if (hovered) shelf.trackPointer()
+            else shelf.hoverActive = false
+        }
     }
     Rectangle {
         id: glass
@@ -160,13 +160,17 @@ Item {
             x: vertical ? 0 : place.position; y: vertical ? place.position : 0
             width: vertical ? depth : place.extent; height: vertical ? place.extent : depth
             AppTile {
+                id: launcherIcon
                 launcher: true
                 width: shelf.iconSize * launcherSlot.place.scale; height: width
                 x: vertical ? (edge === "right" ? shelf.iconBaseline - width : shelf.iconStart) : (parent.width - width) / 2
                 y: vertical ? (parent.height - height) / 2 : (edge === "bottom" ? shelf.iconBaseline - height : shelf.iconStart)
             }
-            ToolTip.visible: launcherMouse.containsMouse && !shelf.dragging
-            ToolTip.delay: 600; ToolTip.text: "Applications · right-click for dock settings"
+            DockLabel {
+                parent: launcherIcon; edge: shelf.edge
+                visible: launcherMouse.containsMouse && shelf.labelReady && !shelf.dragging
+                text: "Applications"
+            }
             MouseArea {
                 id: launcherMouse; anchors.fill: parent; hoverEnabled: true
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
@@ -220,8 +224,11 @@ Item {
                     PauseAnimation { duration: 220 }
                     onStopped: slot.bounce = 0
                 }
-                ToolTip.visible: mouse.containsMouse && !!slot.app && !slot.app.windows.length && !shelf.dragging
-                ToolTip.delay: 500; ToolTip.text: controller.name(slot.modelData)
+                DockLabel {
+                    parent: icon; edge: shelf.edge
+                    visible: mouse.containsMouse && !!slot.app && shelf.labelReady && !shelf.dragging && host.previewKey !== slot.modelData
+                    text: controller.name(slot.modelData)
+                }
                 Timer {
                     id: previewDelay; interval: host.previewKey ? 110 : 450
                     onTriggered: if (mouse.containsMouse && slot.app && slot.app.windows.length && !shelf.dragging) {

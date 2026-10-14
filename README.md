@@ -7,7 +7,7 @@ A macOS-inspired dock for **Hyprland**, built with
 
 ## Features
 
-- Spring-driven icon magnification and launch animation.
+- Sine-warp icon magnification, smooth hover transitions, and launch animation.
 - Drag to reorder favorites or pin running applications.
 - Running-window indicators, window switching, and live hover previews.
 - Restore minimized windows and close windows from preview cards.
@@ -134,6 +134,8 @@ QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
 QML tests need QtTest and `qmltestrunner`; its path varies by distribution.
 Tests cover magnification, drag ordering, window actions, settings persistence,
 installation, placement, and launch feedback. Core tests run in GitHub Actions.
+See [animation notes](docs/animation.md) and [binary-analysis findings](docs/apple-dock-analysis.md)
+for the magnification geometry and timing recovered from a supplied macOS Dock build.
 
 Use `DOCK_CONFIG_DIR=/tmp/dock-dev ./bin/dock` for isolated settings.
 `qml/` contains the UI, `bin/dockctl` handles actions, and `bin/dock` launches

@@ -37,8 +37,8 @@ Item {
     }
     Dock.DockShelf {
         id: shelf; controller: controller; host: host
-        x: controller.vertical ? (controller.edge === "right" ? host.width - width : 0) : (host.width - width) / 2
-        y: controller.vertical ? (host.height - height) / 2 : (controller.edge === "bottom" ? host.height - height : 0)
+        x: controller.vertical ? (controller.edge === "right" ? host.width - width : 0) : (host.width - width) / 2 + axisOffset
+        y: controller.vertical ? (host.height - height) / 2 + axisOffset : (controller.edge === "bottom" ? host.height - height : 0)
     }
     TestCase {
         name: "DockShelf"
@@ -134,8 +134,8 @@ Item {
                         : edge === "right" ? host.width - shelf.x - glass.x - glass.width
                         : edge === "left" ? shelf.x + glass.x : shelf.y + glass.y
                     fuzzyCompare(gap, 8, 0.001)
-                    if (controller.vertical) fuzzyCompare(shelf.y + shelf.height / 2, host.height / 2, 0.001)
-                    else fuzzyCompare(shelf.x + shelf.width / 2, host.width / 2, 0.001)
+                    if (controller.vertical) fuzzyCompare(shelf.y + shelf.height / 2, host.height / 2 + shelf.axisOffset, 0.001)
+                    else fuzzyCompare(shelf.x + shelf.width / 2, host.width / 2 + shelf.axisOffset, 0.001)
                 }
             }
         }
@@ -148,6 +148,35 @@ Item {
             controller.launches = {}
             wait(50)
             compare(slot.bounce, 0)
+        }
+        function test_emptySpaceDoesNotMagnify() {
+            mouseMove(shelf, 105, 10)
+            wait(200)
+            compare(shelf.magnify, false)
+            fuzzyCompare(shelf.lensAmount, 0, 0.001)
+            mouseMove(shelf, 105, 82)
+            wait(200)
+            verify(shelf.magnify)
+            verify(shelf.lensAmount > 0.99)
+        }
+        function test_leaveContractsInPlace() {
+            mouseMove(shelf, 105, 82)
+            wait(250)
+            var center = shelf.lensPointer
+            mouseMove(shelf, 600, 10)
+            wait(250)
+            fuzzyCompare(shelf.lensPointer, center, 0.1)
+            verify(shelf.lensAmount < 0.005)
+            verify(!shelf.magnify)
+        }
+        function test_labelsStayReadyBetweenIconsAndResetOnExit() {
+            mouseMove(shelf, 105, 82)
+            wait(250)
+            verify(shelf.labelReady)
+            mouseMove(shelf, 165, 82)
+            verify(shelf.labelReady)
+            mouseMove(shelf, 600, 10)
+            tryCompare(shelf, "labelReady", false)
         }
     }
 }

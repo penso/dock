@@ -177,8 +177,8 @@ ShellRoot {
                 if (!monitor) return false
                 var w = root.vertical ? 84 * root.dockUnit : shelf.visibleLength
                 var h = root.vertical ? shelf.visibleLength : 84 * root.dockUnit
-                var x = monitor.x + (root.edge === "left" ? 0 : root.edge === "right" ? screen.width - w : (screen.width - w) / 2)
-                var y = monitor.y + (root.edge === "top" ? dock.margins.top : root.edge === "bottom" ? screen.height - h : (screen.height - h) / 2)
+                var x = monitor.x + (root.edge === "left" ? 0 : root.edge === "right" ? screen.width - w : (screen.width - w) / 2 + shelf.axisOffset)
+                var y = monitor.y + (root.edge === "top" ? dock.margins.top : root.edge === "bottom" ? screen.height - h : (screen.height - h) / 2 + shelf.axisOffset)
                 return root.clients.some(function(c) {
                     if (!c.mapped || c.hidden || !c.workspace || (c.workspace.id !== dock.workspace && !c.pinned)) return false
                     return c.at[0] < x + w && c.at[0] + c.size[0] > x && c.at[1] < y + h && c.at[1] + c.size[1] > y
@@ -232,8 +232,8 @@ ShellRoot {
                 controller: root; host: dock
                 iconSize: root.visualDockSize
                 maximumMagnification: root.dockMagnification / 100
-                x: root.vertical ? (root.edge === "right" ? dock.width - width : 0) : (dock.width - width) / 2
-                y: root.vertical ? (dock.height - height) / 2 : (root.edge === "bottom" ? dock.height - height : 0)
+                x: root.vertical ? (root.edge === "right" ? dock.width - width : 0) : (dock.width - width) / 2 + axisOffset
+                y: root.vertical ? (dock.height - height) / 2 + axisOffset : (root.edge === "bottom" ? dock.height - height : 0)
                 enabled: dock.expanded
                 transform: Translate {
                     x: root.vertical ? (1 - dock.reveal) * (root.edge === "right" ? root.dockDepth : -root.dockDepth) : 0

@@ -171,11 +171,81 @@ function pickWindow(windows, workspaceId) {
 }
 
 
-// A cosine lens has a flat slope at its peak and at its outer edge.
+// A tile's size is the difference between its warped edges, not a sample
+// of a scale curve at its center. See docs/apple-dock-analysis.md.
 function magnification(distance, radius, maximum) {
-  if (!(radius > 0) || Math.abs(distance) >= radius) return 1
+  if (!(radius > 0)) return 1
   var peak = maximum === undefined ? 1.32 : Math.max(1, Math.min(2, maximum))
-  return 1 + (peak - 1) * (1 + Math.cos(Math.PI * distance / radius)) / 2
+  var tile = radius / 3
+  var amplitude = (peak - 1) * tile / (2 * Math.sin(Math.PI / 12))
+  return 1 + (fishDisplacement(distance + tile / 2, radius, amplitude)
+    - fishDisplacement(distance - tile / 2, radius, amplitude)) / tile
+}
+
+function fishDisplacement(distance, radius, amplitude) {
+  return amplitude * Math.sin(Math.max(-1, Math.min(1, distance / radius)) * Math.PI / 2)
+}
+
+function fishDuration(sizeDelta) {
+  return Math.floor(1 + 42 * Math.log(1 + Math.abs(sizeDelta) / 2))
+}
+
+function fishTransition(from, to, elapsed, duration) {
+  var t = duration > 0 ? Math.max(0, Math.min(1, elapsed / duration)) : 1
+  return from + (to - from) * (0.5 - 0.5 * Math.cos(Math.PI * t))
+}
+
+// Sine-warp every slot edge, including the spacing between icon artwork.
+// Screen clipping/scrolling is a host-specific adaptation of the geometry.
+function lensLayout(keys, pinCount, iconSize, maximum, pointer, amount, available) {
+  var unit = iconSize / 40
+  var cell = 52 * unit
+  var padding = 10 * unit
+  var divided = pinCount > 0 && pinCount < keys.length
+  var slots = []
+  var baseLength = padding
+  for (var i = -1; i < keys.length; i++) {
+    if (divided && i === pinCount) baseLength += 16 * unit
+    slots.push({key: i < 0 ? "" : keys[i], base: baseLength, center: baseLength + cell / 2})
+    baseLength += cell
+  }
+  baseLength += padding
+  var strength = Math.max(0, Math.min(1, amount))
+  var limit = available > 0 ? available : Infinity
+  var peak = Math.max(1, Math.min(2, maximum))
+  var radius = 3 * cell
+  var amplitude = cell * (peak - 1) * strength / (2 * Math.sin(Math.PI / 12))
+  function warp(position, focus) {
+    return position + fishDisplacement(position - focus, radius, amplitude)
+  }
+  function metrics(focus) {
+    var left = warp(0, focus), right = warp(baseLength, focus)
+    var length = right - left
+    var visible = Math.min(length, limit)
+    var room = Math.max(0, (limit - visible) / 2)
+    var offset = Math.max(-room, Math.min(room, (left + right - baseLength) / 2))
+    return {projected: focus - left + (baseLength - visible) / 2 + offset, offset: offset, left: left, length: length}
+  }
+  var low = 0, high = baseLength
+  if (pointer <= metrics(low).projected) high = low
+  else if (pointer >= metrics(high).projected) low = high
+  else for (var step = 0; step < 18; step++) {
+    var middle = (low + high) / 2
+    if (metrics(middle).projected < pointer) low = middle
+    else high = middle
+  }
+  var focus = (low + high) / 2
+  var resolved = metrics(focus)
+  var result = []
+  for (var k = 0; k < slots.length; k++) {
+    var start = warp(slots[k].base, focus)
+    var end = warp(slots[k].base + cell, focus)
+    var extent = end - start
+    result.push({key: slots[k].key, position: start - resolved.left,
+      extent: extent, scale: extent / cell, baseCenter: slots[k].center})
+  }
+  return {items: result, length: resolved.length, focus: focus,
+    projected: resolved.projected, offset: resolved.offset}
 }
 
 // Analytic critically damped motion retains velocity when the target changes.
@@ -214,6 +284,10 @@ if (typeof module !== "undefined") {
     pinsInOrder: pinsInOrder,
     pickWindow: pickWindow,
     magnification: magnification,
+    lensLayout: lensLayout,
+    fishDisplacement: fishDisplacement,
+    fishDuration: fishDuration,
+    fishTransition: fishTransition,
     springStep: springStep,
     dragOrder: dragOrder
   }
