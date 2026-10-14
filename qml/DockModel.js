@@ -201,13 +201,21 @@ function lensLayout(keys, pinCount, iconSize, maximum, pointer, amount, availabl
   var unit = iconSize / 40
   var cell = 52 * unit
   var padding = 10 * unit
-  var divided = pinCount > 0 && pinCount < keys.length
+  // Keep a resize handle after the launcher/pins even with no running apps.
+  var separatorStart = 0
   var slots = []
   var baseLength = padding
   for (var i = -1; i < keys.length; i++) {
-    if (divided && i === pinCount) baseLength += 16 * unit
+    if (i === pinCount) {
+      separatorStart = baseLength
+      baseLength += 16 * unit
+    }
     slots.push({key: i < 0 ? "" : keys[i], base: baseLength, center: baseLength + cell / 2})
     baseLength += cell
+  }
+  if (pinCount === keys.length) {
+    separatorStart = baseLength
+    baseLength += 16 * unit
   }
   baseLength += padding
   var strength = Math.max(0, Math.min(1, amount))
@@ -245,7 +253,8 @@ function lensLayout(keys, pinCount, iconSize, maximum, pointer, amount, availabl
       extent: extent, scale: extent / cell, baseCenter: slots[k].center})
   }
   return {items: result, length: resolved.length, focus: focus,
-    projected: resolved.projected, offset: resolved.offset}
+    projected: resolved.projected, offset: resolved.offset,
+    separator: warp(separatorStart + 8 * unit, focus) - resolved.left}
 }
 
 // Analytic critically damped motion retains velocity when the target changes.

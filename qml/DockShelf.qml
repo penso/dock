@@ -32,12 +32,16 @@ Item {
     property real rampDuration: 0
     property bool hoverActive: false
     property bool labelReady: false
+    property bool resizing: false
+    property real resizeStartCross: 0
+    property real resizeStartSize: 40
+    property int resizeMagnification: 132
     readonly property bool dragging: dragKey !== ""
     readonly property int pinCount: controller.items.filter(function(i) { return i.pinned }).length
-    readonly property bool divided: pinCount > 0 && pinCount < keys.length
+    readonly property bool divided: true
     readonly property var order: dragging ? DockModel.dragOrder(keys, dragKey, dragIndex) : keys
     readonly property real baseLength: (keys.length + 1) * cell + (divided ? 16 * unit : 0) + 20 * unit
-    readonly property bool magnify: shelfHover.hovered && hoverActive && !dragging && host.expanded
+    readonly property bool magnify: shelfHover.hovered && hoverActive && !dragging && !resizing && host.expanded
     onMagnifyChanged: {
         rampFrom = lensAmount
         rampTarget = magnify ? 1 : 0
@@ -101,10 +105,40 @@ Item {
         if (commit) keys = order.slice()
         dragKey = ""; dragIndex = -1; syncKeys()
     }
+    function startResize(cross) {
+        resizeStartCross = cross
+        resizeStartSize = controller.dockSize
+        resizeMagnification = controller.dockMagnification
+        host.previewKey = ""
+        resizing = true
+    }
+    function resizeHandleGeometry() {
+        var point = resizeGrip.mapToItem(shelf.parent, 0, 0)
+        return { x: point.x, y: point.y, width: resizeGrip.width, height: resizeGrip.height }
+    }
+    function updateResize(cross) {
+        if (!resizing) return
+        var direction = edge === "bottom" || edge === "right" ? -1 : 1
+        var size = Math.max(24, Math.min(72, Math.round(resizeStartSize + direction * (cross - resizeStartCross))))
+        controller.previewAppearance(size, resizeMagnification)
+    }
+    function finishResize(commit) {
+        if (!resizing) return
+        if (!commit) controller.previewAppearance(resizeStartSize, resizeMagnification)
+        resizing = false
+        if (commit) controller.saveAppearance()
+    }
     Component.onCompleted: syncKeys()
     Connections { target: controller; function onItemsChanged() { shelf.syncKeys() } }
-    onDraggingChanged: host.dragging = dragging
-    Component.onDestruction: host.dragging = false
+    onDraggingChanged: host.dragging = dragging || resizing
+    onResizingChanged: {
+        host.dragging = dragging || resizing
+        controller.resizingDock = resizing
+    }
+    Component.onDestruction: {
+        host.dragging = false
+        if (resizing) controller.resizingDock = false
+    }
 
     // Retain the last pointer position on exit: fade the entire wave out rather
     // than sweeping it across the icons towards an offscreen sentinel.
@@ -144,15 +178,48 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         onMovementStarted: host.previewKey = ""
         flickableDirection: vertical ? Flickable.VerticalFlick : Flickable.HorizontalFlick
-        Rectangle {
-            visible: shelf.divided
-            readonly property real position: shelf.placement(shelf.order[shelf.pinCount]).position - 8 * unit
-            x: vertical ? glass.x + (glass.width - width) / 2 : position
-            y: vertical ? position : glass.y + (glass.height - height) / 2
-            width: vertical ? 34 * unit : 1; height: vertical ? 1 : 34 * unit
-            color: controller.alpha(controller.palette.text, 0.22)
+        Item {
+            id: resizeGrip
+            objectName: "dock-resize-grip"
+            z: 20
+            readonly property real position: shelf.lens.separator
+            x: vertical ? glass.x : position - width / 2
+            y: vertical ? position - height / 2 : glass.y
+            width: vertical ? glass.width : Math.max(16, 16 * unit)
+            height: vertical ? Math.max(16, 16 * unit) : glass.height
             Behavior on x { enabled: shelf.dragging; NumberAnimation { duration: 180 } }
             Behavior on y { enabled: shelf.dragging; NumberAnimation { duration: 180 } }
+            Rectangle {
+                anchors.centerIn: parent
+                width: vertical ? 34 * unit : (resizeMouse.containsMouse || shelf.resizing ? 2 : 1)
+                height: vertical ? (resizeMouse.containsMouse || shelf.resizing ? 2 : 1) : 34 * unit
+                radius: 1
+                color: controller.alpha(controller.palette.text, resizeMouse.containsMouse || shelf.resizing ? 0.75 : 0.3)
+            }
+            DockLabel {
+                edge: shelf.edge
+                visible: shelf.resizing || (resizeMouse.containsMouse && shelf.labelReady)
+                text: shelf.resizing ? controller.dockSize + " px" : "Drag to resize"
+            }
+            MouseArea {
+                id: resizeMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                preventStealing: true
+                acceptedButtons: Qt.LeftButton
+                cursorShape: shelf.vertical ? Qt.SizeHorCursor : Qt.SizeVerCursor
+                onPressed: function(event) {
+                    var point = mapToItem(shelf.parent, event.x, event.y)
+                    shelf.startResize(shelf.vertical ? point.x : point.y)
+                }
+                onPositionChanged: function(event) {
+                    if (!pressed) return
+                    var point = mapToItem(shelf.parent, event.x, event.y)
+                    shelf.updateResize(shelf.vertical ? point.x : point.y)
+                }
+                onReleased: shelf.finishResize(true)
+                onCanceled: shelf.finishResize(false)
+            }
         }
         Item {
             id: launcherSlot

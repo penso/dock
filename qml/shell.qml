@@ -20,10 +20,11 @@ ShellRoot {
     property bool appsOpen: false
     property bool dockSettingsOpen: false
     property var appearancePreview: null
+    property bool resizingDock: false
     readonly property int dockSize: Math.max(24, Math.min(72, Number(appearancePreview ? appearancePreview.size : settings.dock.size) || 40))
     readonly property int dockMagnification: Math.max(100, Math.min(200, Number(appearancePreview ? appearancePreview.magnification : settings.dock.magnification) || 132))
     property real visualDockSize: dockSize
-    Behavior on visualDockSize { SmoothedAnimation { velocity: 200; duration: 160 } }
+    Behavior on visualDockSize { enabled: !root.resizingDock; SmoothedAnimation { velocity: 200; duration: 160 } }
     readonly property real dockUnit: visualDockSize / 40
     // Reserve the largest supported cross-axis size once. Resizing the Wayland
     // surface for every slider event causes compositor configure/animation jitter.
@@ -142,7 +143,8 @@ ShellRoot {
         function settings(): void { root.dockSettingsOpen = true }
         function status(): string {
             return JSON.stringify({ edge: root.edge, size: root.dockSize, magnification: root.dockMagnification, settingsOpen: root.dockSettingsOpen, panels: Array.from(dockVariants.instances).map(function(panel) {
-                return { screen: panel.screen.name, expanded: panel.expanded, overlapping: panel.overlapping, reveal: panel.reveal, preview: panel.previewKey }
+                return { screen: panel.screen.name, expanded: panel.expanded, overlapping: panel.overlapping, reveal: panel.reveal, preview: panel.previewKey,
+                    resizing: panel.shelfItem.resizing, resizeHandle: panel.shelfItem.resizeHandleGeometry() }
             }), apps: root.items.map(function(item) {
                 return { key: item.key, windows: item.windows.length, minimized: item.windows.filter(function(w) { return w.minimized }).length }
             }) })
@@ -168,6 +170,7 @@ ShellRoot {
             property string previewKey: ""
             property var previewAnchor: null
             property bool dragging: false
+            readonly property var shelfItem: shelf
             property real reveal: expanded ? 1 : 0
             Behavior on reveal { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
             function keepPreview() { previewClose.stop() }
@@ -195,8 +198,8 @@ ShellRoot {
             mask: Region {
                 x: root.vertical ? (root.edge === "right" ? dock.width - width : 0) : shelf.x
                 y: root.vertical ? shelf.y : (root.edge === "bottom" ? dock.height - height : 0)
-                width: root.vertical ? (dock.expanded ? (dock.hovered ? shelf.depth : 86 * root.dockUnit) : 3) : shelf.width
-                height: root.vertical ? shelf.height : (dock.expanded ? (dock.hovered ? shelf.depth : 86 * root.dockUnit) : 3)
+                width: root.vertical ? (dock.expanded ? (dock.hovered || dock.dragging ? shelf.depth : 86 * root.dockUnit) : 3) : shelf.width
+                height: root.vertical ? shelf.height : (dock.expanded ? (dock.hovered || dock.dragging ? shelf.depth : 86 * root.dockUnit) : 3)
             }
             exclusiveZone: 0
             WlrLayershell.namespace: "dock"

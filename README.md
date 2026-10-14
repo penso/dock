@@ -9,6 +9,7 @@ A macOS-inspired dock for **Hyprland**, built with
 
 - Sine-warp icon magnification, smooth hover transitions, and launch animation.
 - Drag to reorder favorites or pin running applications.
+- Drag the divider to resize live; unpinned running apps appear after it.
 - Running-window indicators, window switching, and live hover previews.
 - Restore minimized windows and close windows from preview cards.
 - All four screen edges, multi-monitor panels, auto-hide, and intelligent hiding.
@@ -54,6 +55,11 @@ DOCK_BACKEND=classic ./bin/dock
 Right-click the launcher for settings and hide options. Right-click an app to
 pin it; drag icons to reorder them. Settings are created under
 `${XDG_CONFIG_HOME:-~/.config}/dock/` on first run.
+
+The divider separates favorites from unpinned running applications. Drag it
+**up to enlarge or down to shrink** a bottom dock; size saves when you release.
+For other edges, drag toward the desktop to enlarge and toward the edge to
+shrink. The handle stays available even when there are no unpinned apps.
 
 ## Install
 

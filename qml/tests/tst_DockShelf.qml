@@ -3,6 +3,7 @@ import QtTest
 import ".." as Dock
 
 Item {
+    id: scene
     width: 700; height: 500
     QtObject {
         id: controller
@@ -11,6 +12,9 @@ Item {
         property bool appsOpen: false
         property var launches: ({})
         property var lastAction: []
+        property bool resizingDock: false
+        property int dockSize: 40
+        property int dockMagnification: 132
         property var items: [
             {key: "a", pinned: true, windows: []},
             {key: "b", pinned: true, windows: [{activated: true}]},
@@ -23,6 +27,11 @@ Item {
         function action(args) { lastAction = args }
         function launch(key) { lastAction = ["launch", key] }
         function activate(item) { lastAction = ["activate", item.key] }
+        function previewAppearance(size, magnification) {
+            dockSize = size; dockMagnification = magnification
+            shelf.iconSize = size
+        }
+        function saveAppearance() { lastAction = ["appearance", String(dockSize), String(dockMagnification)] }
     }
     QtObject {
         id: host
@@ -44,6 +53,8 @@ Item {
         name: "DockShelf"
         when: windowShown
         function init() {
+            shelf.finishResize(false)
+            controller.dockSize = 40; controller.dockMagnification = 132
             shelf.iconSize = 40; shelf.maximumMagnification = 1.32
             controller.vertical = false; controller.edge = "bottom"
             controller.lastAction = []; host.previewKey = ""
@@ -177,6 +188,47 @@ Item {
             verify(shelf.labelReady)
             mouseMove(shelf, 600, 10)
             tryCompare(shelf, "labelReady", false)
+        }
+        function test_dividerDragResizesLiveAndSavesOnRelease() {
+            var grip = findChild(shelf, "dock-resize-grip")
+            verify(grip !== null)
+            var start = grip.mapToItem(scene, grip.width / 2, grip.height / 2)
+            mousePress(scene, start.x, start.y)
+            verify(shelf.resizing)
+            verify(host.dragging)
+            verify(controller.resizingDock)
+            mouseMove(scene, start.x, start.y - 20, 30)
+            tryCompare(controller, "dockSize", 60)
+            compare(shelf.iconSize, 60)
+            compare(controller.lastAction.length, 0)
+            verify(!shelf.magnify)
+            wait(300)
+            compare(controller.dockSize, 60) // Resizing geometry must not feed back into pointer delta.
+            mouseRelease(scene, start.x, start.y - 20)
+            compare(controller.lastAction.join(","), "appearance,60,132")
+            verify(!shelf.resizing)
+            verify(!host.dragging)
+            verify(!controller.resizingDock)
+        }
+        function test_dividerDirectionsBoundsAndCancel() {
+            for (var edge of ["bottom", "top", "left", "right"]) {
+                controller.edge = edge
+                controller.vertical = edge === "left" || edge === "right"
+                controller.previewAppearance(40, 175)
+                controller.lastAction = []
+                shelf.startResize(100)
+                var direction = edge === "bottom" || edge === "right" ? -1 : 1
+                shelf.updateResize(100 + direction * 15)
+                compare(controller.dockSize, 55)
+                compare(controller.dockMagnification, 175)
+                shelf.updateResize(100 + direction * 500)
+                compare(controller.dockSize, 72)
+                shelf.updateResize(100 - direction * 500)
+                compare(controller.dockSize, 24)
+                shelf.finishResize(false)
+                compare(controller.dockSize, 40)
+                compare(controller.lastAction.length, 0)
+            }
         }
     }
 }

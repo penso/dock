@@ -72,6 +72,13 @@ spring previously inferred from the screen recording.
 
 ## Adaptation in this project
 
+The divider resize handler, `DockBarMouseEventHandler._handleResizeDockEvent:type:`
+at `0x10006f370`, captures the initial pointer and tile size. Its drag path
+adds/subtracts the perpendicular pointer delta directly, and suppresses hover
+magnification while resizing. Dock uses the same directional interaction,
+while retaining its existing 24–72 px icon-size limits (the inspected Apple
+handler clamps its tile metric to 16–128).
+
 `DockModel.js` implements the equations independently. Our slot width supplies
 the base tile metric, while artwork remains inset within its slot. The waveform
 therefore expands icon spacing along with icon size. Pointer tracking is direct,

@@ -118,3 +118,25 @@ test('finite magnification uses size-dependent milliseconds and half-cosine easi
   assert.equal(model.fishTransition(1, 0, 200, 136), 0)
   assert.equal(model.fishTransition(0.4, 0, 0, 80), 0.4)
 })
+
+test('the resize divider remains available without unpinned apps or any pins', () => {
+  for (const [keys, pins] of [[[], 0], [['a', 'b'], 2], [['a', 'b'], 0]]) {
+    const lens = model.lensLayout(keys, pins, 40, 2, 100, 0, 1000)
+    assert.ok(lens.separator > 0 && lens.separator < lens.length)
+    const before = lens.items[pins] // launcher occupies index zero
+    assert.ok(lens.separator > before.position + before.extent)
+    if (pins < keys.length) assert.ok(lens.separator < lens.items[pins + 1].position)
+  }
+})
+
+test('unpinned running applications follow favorites regardless of window arrival order', () => {
+  const windows = [
+    {key:'running', hasEntry:true, workspaceId:1},
+    {key:'favorite', hasEntry:true, workspaceId:1},
+  ]
+  const items = model.buildItems(['favorite', 'closed'], windows)
+  assert.deepEqual(items.map(item => [item.key, item.pinned]), [['favorite', true], ['closed', true], ['running', false]])
+  const lens = model.lensLayout(items.map(item => item.key), 2, 40, 2, 100, 1, 1000)
+  assert.ok(lens.items[2].position + lens.items[2].extent < lens.separator)
+  assert.ok(lens.items[3].position > lens.separator)
+})
