@@ -23,14 +23,16 @@ desktop environment or somebody else's dotfiles.
 
 ## In motion
 
-[![Animated demo of smooth magnification across 18 pinned applications, including Herdr, with badge counts and progress](docs/media/dock-demo.webp)](docs/media/dock-demo-120fps.mp4?raw=true)
+[![Animated demo alternating slow hovers, accelerated sweeps and rapid reversals across 18 pinned applications, including Herdr](docs/media/dock-demo.webp)](docs/media/dock-demo-120fps.mp4?raw=true)
 
 **[Watch or download the full 120 fps video](docs/media/dock-demo-120fps.mp4?raw=true)**
-— 21 seconds, 2640 × 330, approximately 2.5 MB.
+— 14 seconds, 2640 × 330, approximately 2.2 MB.
 [Still frame](docs/media/dock-demo-poster.png).
 
 Recorded from the real dock with 18 installed apps, including Herdr, Chrome,
-Ghostty, Kitty, Signal, and GNOME applications. The inline preview is 60 fps;
+Ghostty, Kitty, Signal, and GNOME applications. Slow hovers alternate with fast
+accelerating sweeps, rapid reversals, and quick exits/re-entries—all in real time.
+The inline preview is 60 fps;
 the MP4 retains the 120 fps capture. Badge counts and progress are **demo data**
 sent through the actual D-Bus interface, not real unread messages.
 
