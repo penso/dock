@@ -21,7 +21,8 @@ jobs:
             echo "The release tag must match VERSION" >&2
             exit 1
           fi
-          export SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)
+          SOURCE_DATE_EPOCH=$(git -c safe.directory="$GITHUB_WORKSPACE" show -s --format=%ct HEAD)
+          export SOURCE_DATE_EPOCH
           echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" >> "$GITHUB_ENV"
           python tools/package_arch.py --release
       - name: Build architecture-independent package
