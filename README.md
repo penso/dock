@@ -286,6 +286,30 @@ are independently adjustable. Changes preview live and save automatically.
 The spotlight can stay enabled with its name label off; the gradient can be used
 with ambient glow and no drop shadow.
 
+### Icon rendering
+
+With Python Pillow and GTK 3's GObject introspection bindings installed, Dock
+precomputes nine Lanczos-filtered sizes per app icon into a cached texture atlas.
+The sizes account for the monitor's pixel ratio and maximum magnification;
+hovering blends adjacent sizes on the GPU without spawning processes or loading
+new images. Transparent edges are resampled with premultiplied alpha, and icon
+shadows stay separate from the artwork and shelf.
+
+Atlases live in `$XDG_CACHE_HOME/dock/icon-atlases` (normally `~/.cache/dock`).
+The cache key includes the source content and physical sizes. Native Qt rendering
+is retained for icons that cannot be cached, or when optional dependencies are
+unavailable. Use `DOCK_ICON_FILTER=native dock` to compare the native path, and
+`DOCK_ICON_THEME=NAME` to match a custom Qt icon theme (default: `hicolor`).
+`DOCK_ICON_PYTHON` can select a Python interpreter with Pillow and PyGObject.
+
+The small atlas-sampling shader is shipped precompiled. After editing its GLSL,
+regenerate it with Qt 6 Shader Tools:
+
+```sh
+qsb --qsbversion 64 --glsl '100 es,120,150' --hlsl 50 --msl 12 \
+  -o qml/shaders/icon-atlas.frag.qsb qml/shaders/icon-atlas.frag
+```
+
 | Action | Result |
 | --- | --- |
 | Click the launcher grid | Open application search |

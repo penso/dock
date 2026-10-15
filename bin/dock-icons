@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""Build reusable, premultiplied-alpha Lanczos icon atlases, off the UI thread."""
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import sys
+import tempfile
+from urllib.parse import unquote, urlsplit
+
+VERSION = 1
+LEVELS = 9
+COLUMNS = 3
+PADDING = 2
+
+
+def resolve(source):
+    uri = urlsplit(source)
+    if uri.scheme == "file":
+        path = Path(unquote(uri.path))
+    elif not uri.scheme:
+        path = Path(source)
+    elif uri.scheme == "image" and uri.netloc == "icon":
+        name = unquote(uri.path[1:])
+        if name.startswith("/"):
+            return Path(name).resolve(strict=True)
+        import gi
+        gi.require_version("Gtk", "3.0")
+        from gi.repository import Gtk
+        theme = Gtk.IconTheme.new()
+        # Quickshell defaults to hicolor without a platform theme. An explicit
+        # override also supports desktops that configure a different Qt theme.
+        theme.set_custom_theme(os.environ.get("DOCK_ICON_THEME", "hicolor"))
+        info = theme.lookup_icon(name, 512, Gtk.IconLookupFlags.FORCE_SIZE)
+        if info is None:
+            raise ValueError("Icon theme could not resolve " + source)
+        path = Path(info.get_filename())
+    else:
+        raise ValueError("Unsupported icon source")
+    return path.resolve(strict=True)
+
+
+def load_image(path, maximum):
+    from PIL import Image, ImageOps
+    if path.suffix.lower() == ".svg":
+        import gi
+        gi.require_version("GdkPixbuf", "2.0")
+        from gi.repository import GdkPixbuf
+        pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(path), maximum * 3, maximum * 3, True)
+        mode = "RGBA" if pixbuf.get_has_alpha() else "RGB"
+        return Image.frombytes(mode, (pixbuf.get_width(), pixbuf.get_height()),
+                               pixbuf.get_pixels(), "raw", mode, pixbuf.get_rowstride()).convert("RGBA")
+    with Image.open(path) as image:
+        return ImageOps.exif_transpose(image).convert("RGBA")
+
+
+def build_atlas(path, minimum, maximum, cache):
+    from PIL import Image
+    if not (8 <= minimum <= maximum <= 512):
+        raise ValueError("Icon pixel sizes must be within 8..512")
+    step = max(1, math.ceil((maximum - minimum) / (LEVELS - 1)))
+    largest = minimum + step * (LEVELS - 1)
+    cell = largest + PADDING * 2
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    key = hashlib.sha256(f"{VERSION}:{digest}:{minimum}:{step}".encode()).hexdigest()
+    target = cache / (key + ".png")
+    if not target.exists():
+        cache.mkdir(parents=True, exist_ok=True)
+        original = load_image(path, largest)
+        # Resample premultiplied RGB so transparent color cannot produce fringes.
+        original = original.convert("RGBa")
+        atlas = Image.new("RGBA", (cell * COLUMNS, cell * COLUMNS))
+        for index in range(LEVELS):
+            pixels = minimum + index * step
+            factor = pixels / max(original.size)
+            size = (max(1, round(original.width * factor)), max(1, round(original.height * factor)))
+            level = original.resize(size, Image.Resampling.LANCZOS).convert("RGBA")
+            x = (index % COLUMNS) * cell + PADDING + (pixels - level.width) // 2
+            y = (index // COLUMNS) * cell + PADDING + (pixels - level.height) // 2
+            atlas.paste(level, (x, y))
+        with tempfile.NamedTemporaryFile(dir=cache, suffix=".png", delete=False) as stream:
+            temporary = Path(stream.name)
+        try:
+            atlas.save(temporary)
+            os.replace(temporary, target)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return {"url": target.as_uri(), "minimum": minimum, "step": step, "cell": cell}
+
+
+def process(request, cache=None):
+    cache = cache or Path(os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")) / "dock/icon-atlases"
+    scale = float(request["scale"])
+    size = float(request["size"])
+    magnification = float(request["magnification"])
+    if not (0.5 <= scale <= 4 and 24 <= size <= 72 and 1 <= magnification <= 2):
+        raise ValueError("Invalid icon geometry")
+    minimum = max(8, math.ceil(size * .84 * scale))
+    maximum = max(minimum, math.ceil(size * .84 * magnification * scale))
+    result = {}
+    for source in dict.fromkeys(request["sources"]):
+        if not source:
+            continue
+        try:
+            result[source] = build_atlas(resolve(source), minimum, maximum, cache)
+        except Exception as error:
+            # Keep native rendering for a missing dependency or unsupported icon.
+            print(f"dock-icons: {source}: {error}", file=sys.stderr)
+    return result
+
+
+if __name__ == "__main__":
+    try:
+        print(json.dumps(process(json.loads(sys.argv[1]))), flush=True)
+    except Exception as error:
+        print(f"dock-icons: {error}", file=sys.stderr)
+        print("{}", flush=True)
+        raise SystemExit(1)

@@ -11,6 +11,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common dbus-daemon
+      - run: sudo apt-get update && sudo apt-get install -y python3-gi python3-pil gir1.2-gdkpixbuf-2.0 librsvg2-common dbus-daemon
+      - run: python3 -m pip install pillow
       - run: python3 -m unittest discover -s tests -v
       - run: node --test qml/tests/model.test.js

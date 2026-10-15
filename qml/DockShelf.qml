@@ -7,6 +7,7 @@ Item {
     id: shelf
     required property var controller
     required property var host
+    property var iconCache: null
     signal launcherMenu(var anchor)
     signal appMenu(var item, var anchor)
     signal trashMenu(var anchor)
@@ -323,6 +324,7 @@ Item {
                     x: vertical ? (edge === "right" ? shelf.iconBaseline - width - slot.bounce : shelf.iconStart + slot.bounce) : (parent.width - width) / 2
                     y: vertical ? (parent.height - height) / 2 : (edge === "bottom" ? shelf.iconBaseline - height - slot.bounce : shelf.iconStart + slot.bounce)
                     source: controller.icon(slot.modelData)
+                    atlasEntry: shelf.iconCache ? (shelf.iconCache.entries[source] || null) : null
                     tileColor: shelf.tileColor(slot.modelData)
                     layer.enabled: slot.lifted
                     layer.effect: MultiEffect { shadowEnabled: true; shadowBlur: 0.4; shadowVerticalOffset: 5; shadowColor: "#80000000" }

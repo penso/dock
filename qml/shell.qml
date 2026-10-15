@@ -185,7 +185,7 @@ ShellRoot {
                 edge: root.edge, size: root.dockSize, magnification: root.dockMagnification, settingsOpen: root.dockSettingsOpen,
                 badges: { ready: root.badgeBridgeReady, ownsUnityName: root.ownsUnityName }, panels: Array.from(dockVariants.instances).map(function(panel) {
                 return { screen: panel.screen.name, expanded: panel.expanded, overlapping: panel.overlapping, reveal: panel.reveal, preview: panel.previewKey,
-                    resizing: panel.shelfItem.resizing, resizeHandle: panel.shelfItem.resizeHandleGeometry(), trashHandle: panel.shelfItem.trashHandleGeometry() }
+                    resizing: panel.shelfItem.resizing, resizeHandle: panel.shelfItem.resizeHandleGeometry(), trashHandle: panel.shelfItem.trashHandleGeometry(), iconCache: panel.shelfItem.iconCache.summary }
             }), apps: root.items.map(function(item) {
                 return { key: item.key, windows: item.windows.length, minimized: item.windows.filter(function(w) { return w.minimized }).length,
                     activity: item.activity, urgent: item.urgent }
@@ -278,6 +278,7 @@ ShellRoot {
             }
             DockShelf {
                 id: shelf
+                iconCache: dockIconCache
                 controller: root; host: dock
                 iconSize: root.visualDockSize
                 maximumMagnification: root.dockMagnification / 100
@@ -293,6 +294,11 @@ ShellRoot {
                 onTrashMenu: function(anchor) { trashMenu.popupFor(anchor, root.edge, dock.contentItem) }
             }
             Timer { id: previewClose; interval: 350; onTriggered: if (!previewHover.hovered) dock.previewKey = "" }
+            IconCache {
+                id: dockIconCache
+                controller: root
+                helper: Quickshell.env("DOCK_ICON_HELPER") || root.helper.replace(/dockctl$/, "dock-icons")
+            }
             PopupWindow {
                 id: previews
                 visible: dock.enabledHere && !!dock.previewItem && dock.previewItem.windows.length > 0 && !dock.dragging
