@@ -12,6 +12,8 @@ Item {
     signal trashMenu(var anchor)
     readonly property bool vertical: controller.vertical
     readonly property string edge: controller.edge
+    readonly property var styling: controller.dockStyle || DockModel.stylePreset("desktop")
+    readonly property color backgroundColor: controller.dockBackgroundColor || controller.palette.surface
     property real iconSize: 40
     property real maximumMagnification: 1.32
     readonly property real unit: iconSize / 40
@@ -166,11 +168,32 @@ Item {
         width: vertical ? 64 * unit : shelf.width
         height: vertical ? shelf.height : 64 * unit
         radius: 17 * unit
-        color: "#a64b4d52"
-        border.width: 0.7
-        border.color: "#38ffffff"
+        color: shelf.backgroundColor
+        opacity: shelf.styling.opacity / 100
+        border.width: shelf.styling.ambient ? 1.2 : 0.7
+        border.color: shelf.styling.ambient ? controller.alpha(controller.palette.blue, 0.7) : controller.alpha(controller.palette.text, 0.18)
         layer.enabled: true
-        layer.effect: MultiEffect { shadowEnabled: true; shadowColor: "#40000000"; shadowBlur: 0.4; shadowVerticalOffset: 2 }
+        layer.effect: MultiEffect {
+            shadowEnabled: shelf.styling.ambient || shelf.styling.shadow !== false
+            shadowColor: shelf.styling.ambient ? controller.alpha(controller.palette.blue, 0.35) : "#60000000"
+            shadowBlur: shelf.styling.ambient ? 0.65 : 0.4
+            shadowVerticalOffset: shelf.styling.shadow === false ? 0 : shelf.styling.raised ? 5 : 2
+        }
+        Rectangle {
+            visible: shelf.styling.raised && shelf.styling.shadow !== false
+            x: shelf.vertical ? (shelf.edge === "right" ? 3 : -3) : 0
+            y: shelf.vertical ? 0 : (shelf.edge === "bottom" ? 3 : -3)
+            width: parent.width; height: parent.height; radius: parent.radius
+            z: -1; color: Qt.darker(shelf.backgroundColor, 1.5)
+        }
+        Rectangle {
+            anchors.fill: parent; anchors.margins: 1; radius: parent.radius - 1
+            visible: shelf.styling.raised
+            gradient: Gradient {
+                GradientStop { position: 0; color: Qt.lighter(shelf.backgroundColor, 1.3) }
+                GradientStop { position: 1; color: shelf.backgroundColor }
+            }
+        }
         Rectangle {
             anchors.fill: parent; anchors.margins: 1; radius: 17 * shelf.unit - 1; color: "transparent"
             border.width: 0.7; border.color: "#16000000"
@@ -269,6 +292,26 @@ Item {
                 z: lifted ? 10 : 1
                 Behavior on x { enabled: shelf.dragging && !slot.lifted; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
                 Behavior on y { enabled: shelf.dragging && !slot.lifted; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                Rectangle {
+                    visible: slot.active && (shelf.styling.spotlight || shelf.styling.ambient)
+                    x: icon.x - 4 * unit; y: icon.y - 4 * unit
+                    width: icon.width + 8 * unit
+                    height: icon.height + (shelf.styling.activeLabel ? 16 : 8) * unit
+                    radius: 10 * unit
+                    color: controller.alpha(controller.palette.blue, shelf.styling.spotlight ? 0.2 : 0.1)
+                    border.width: shelf.styling.spotlight ? 1 : 0
+                    border.color: controller.alpha(controller.palette.blue, 0.35)
+                    layer.enabled: shelf.styling.ambient
+                    layer.effect: MultiEffect { shadowEnabled: true; shadowColor: controller.alpha(controller.palette.blue, 0.4); shadowBlur: 0.6 }
+                }
+                Text {
+                    visible: slot.active && shelf.styling.activeLabel === true
+                    x: icon.x - 2 * unit; y: icon.y + icon.height + unit
+                    width: icon.width + 4 * unit; height: 10 * unit
+                    text: controller.name(slot.modelData); elide: Text.ElideRight
+                    font.pixelSize: Math.max(8, 8 * unit); color: controller.palette.text
+                    horizontalAlignment: Text.AlignHCenter
+                }
                 AppTile {
                     id: icon
                     property real pressScale: mouse.pressed && (mouse.pressedButtons & Qt.LeftButton) && !slot.lifted ? 0.94 : 1
@@ -291,10 +334,14 @@ Item {
                 }
                 Rectangle {
                     visible: !!slot.app && slot.app.windows.length > 0
+                    objectName: "dock-running-" + slot.modelData
                     x: vertical ? (edge === "right" ? shelf.depth - shelf.edgeGap - 9 * unit : shelf.edgeGap + 5 * unit) : (parent.width - width) / 2
                     y: vertical ? (parent.height - height) / 2 : (edge === "bottom" ? shelf.depth - shelf.edgeGap - 9 * unit : shelf.edgeGap + 5 * unit)
-                    width: 4 * unit; height: width; radius: width / 2
-                    color: slot.app && slot.app.urgent ? "#e0af68" : slot.active ? "#f2f2f4" : "#adbec0c5"
+                    width: (shelf.styling.indicator === "rails" && !vertical ? (slot.active ? 22 : 12) : 4) * unit
+                    height: (shelf.styling.indicator === "rails" && vertical ? (slot.active ? 22 : 12) : 4) * unit
+                    radius: 2 * unit
+                    color: slot.app && slot.app.urgent ? "#e0af68" : slot.active ? controller.palette.blue : controller.alpha(controller.palette.text, 0.65)
+                    opacity: slot.active && shelf.styling.activeLabel ? 0 : 1
                 }
                 SequentialAnimation {
                     id: launchBounce; running: slot.launching && host.expanded; loops: 3

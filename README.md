@@ -278,6 +278,14 @@ The dock starts at the **bottom** of the screen. Its default icon size is
 **40 px**, with **132%** hover magnification. Favorites start empty; running
 applications appear automatically when the compositor exposes them.
 
+**Dock Settings** includes Desktop, Glass, Minimal, and Raised appearance presets.
+They use the current dock palette; background color can follow the palette or use
+a custom `#RRGGBB` value. Background opacity, dot/rail running indicators, ambient
+edge glow, active-app spotlight, active-app name, shelf gradient, and shelf shadow
+are independently adjustable. Changes preview live and save automatically.
+The spotlight can stay enabled with its name label off; the gradient can be used
+with ambient glow and no drop shadow.
+
 | Action | Result |
 | --- | --- |
 | Click the launcher grid | Open application search |

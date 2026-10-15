@@ -33,6 +33,11 @@ ShellRoot {
     property bool appsOpen: false
     property bool dockSettingsOpen: false
     property var appearancePreview: null
+    property var stylePreview: null
+    readonly property var dockStyle: Object.assign(DockModel.stylePreset("desktop"), settings.dock.style || {}, stylePreview || {})
+    readonly property color dockBackgroundColor: dockStyle.backgroundColor || palette.surface
+    function previewStyle(changes) { stylePreview = Object.assign({}, dockStyle, {theme: "custom"}, changes) }
+    function selectDockTheme(name) { stylePreview = DockModel.stylePreset(name) }
     property bool resizingDock: false
     readonly property int dockSize: Math.max(24, Math.min(72, Number(appearancePreview ? appearancePreview.size : settings.dock.size) || 40))
     readonly property int dockMagnification: Math.max(100, Math.min(200, Number(appearancePreview ? appearancePreview.magnification : settings.dock.magnification) || 132))
@@ -45,7 +50,7 @@ ShellRoot {
     function previewAppearance(size, magnification) {
         appearancePreview = { size: size, magnification: magnification }
     }
-    function saveAppearance() { action(["appearance", String(dockSize), String(dockMagnification)]) }
+    function saveAppearance() { action(["appearance", String(dockSize), String(dockMagnification), "--style", JSON.stringify(dockStyle)]) }
     property var menuItem: null
     readonly property var trash: trashService
     TrashService {
@@ -87,6 +92,7 @@ ShellRoot {
     function action(args) { Quickshell.execDetached(["python3", helper].concat(args)) }
     function entry(key) { return DesktopEntries.byId(key) || DesktopEntries.heuristicLookup(key) }
     function icon(key) {
+        if (key === "org.gnome.Nautilus") return Quickshell.iconPath("folder", true) || Qt.resolvedUrl("icons/folder.svg")
         var app = entry(key)
         return Quickshell.iconPath(app && app.icon ? app.icon : "application-x-executable", true) || Qt.resolvedUrl("icons/application.svg")
     }
@@ -131,6 +137,9 @@ ShellRoot {
         onLoaded: {
             try {
                 root.settings = JSON.parse(text())
+                if (root.stylePreview && Object.keys(root.stylePreview).every(function(key) {
+                    return root.settings.dock.style && root.settings.dock.style[key] === root.stylePreview[key]
+                })) root.stylePreview = null
                 // Acknowledge only the latest preview. An older asynchronous
                 // save must not pull the slider's live size backwards.
                 if (root.appearancePreview && root.settings.dock.size === root.appearancePreview.size

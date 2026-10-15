@@ -219,6 +219,14 @@ function fishTransition(from, to, elapsed, duration) {
 
 // Sine-warp every slot edge, including the spacing between icon artwork.
 // Screen clipping/scrolling is a host-specific adaptation of the geometry.
+function stylePreset(name) {
+  var style = {theme: name, opacity: 80, backgroundColor: "", indicator: "dots", ambient: false, spotlight: false, activeLabel: false, raised: false, shadow: true}
+  if (name === "glass") { style.opacity = 60; style.ambient = true; style.indicator = "rails" }
+  else if (name === "minimal") { style.opacity = 35; style.indicator = "rails" }
+  else if (name === "raised") { style.opacity = 90; style.raised = true; style.spotlight = true; style.indicator = "rails" }
+  return style
+}
+
 function lensLayout(keys, pinCount, iconSize, maximum, pointer, amount, available) {
   var unit = iconSize / 40
   var cell = 52 * unit

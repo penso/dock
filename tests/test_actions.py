@@ -76,6 +76,23 @@ class DockActionsTest(unittest.TestCase):
             self.run_action("appearance", "200", "300")
         self.assertEqual(self.config.read_text(), before)
 
+    def test_style_persists_without_disturbing_other_preferences(self):
+        style = {"theme": "glass", "opacity": 0, "backgroundColor": "#123456", "indicator": "rails",
+                 "ambient": True, "spotlight": True, "activeLabel": False, "raised": True, "shadow": False}
+        result = self.run_action("appearance", "48", "180", "--style", json.dumps(style))
+        self.assertEqual(result["dock"]["style"], style)
+        self.assertEqual(result["dock"]["pinned"], ["a", "b", "c"])
+        self.assertEqual(result["workspaces"], {"2": "dwindle"})
+        self.assertEqual(self.run_action("appearance", "52", "180")["dock"]["style"], style)
+
+    def test_invalid_style_cannot_overwrite_settings(self):
+        before = self.config.read_text()
+        for style in ({"opacity": 101}, {"backgroundColor": "red"}, {"ambient": "false"},
+                      {"indicator": "invalid"}, {"theme": "unknown"}, {"unknown": True}, []):
+            with self.subTest(style=style), self.assertRaises(SystemExit):
+                self.run_action("appearance", "48", "180", "--style", json.dumps(style))
+            self.assertEqual(self.config.read_text(), before)
+
     def test_restore_moves_minimized_window_before_focus(self):
         client = {"address": "0x123", "workspace": {"name": "special:minimized"}}
         with patch.object(actions, "window", return_value=client), patch.object(actions, "ctl", return_value={"id": 2}), patch.object(actions, "dispatch") as dispatch:

@@ -22,12 +22,14 @@ Item {
         property bool resizingDock: false
         property int dockSize: 40
         property int dockMagnification: 132
+        property var dockStyle: ({opacity: 80, indicator: "dots", ambient: false, spotlight: false, raised: false})
+        property color dockBackgroundColor: "#303044"
         property var items: [
             {key: "a", pinned: true, windows: []},
             {key: "b", pinned: true, windows: [{activated: true}]},
             {key: "c", pinned: false, windows: [{activated: false}]}
         ]
-        property var palette: ({base: "#202030", text: "#ffffff", surface: "#303044"})
+        property var palette: ({base: "#202030", text: "#ffffff", surface: "#303044", blue: "#7aa2f7"})
         function alpha(value, opacity) { var c = Qt.color(value); return Qt.rgba(c.r, c.g, c.b, opacity) }
         function icon(key) { return "" }
         function name(key) { return key }
@@ -62,6 +64,7 @@ Item {
         when: windowShown
         SignalSpy { id: trashMenuSpy; target: shelf; signalName: "trashMenu" }
         function init() {
+            controller.dockStyle = {opacity: 80, indicator: "dots", ambient: false, spotlight: false, raised: false}
             host.contextMenuOpen = false
             shelf.finishResize(false)
             controller.dockSize = 40; controller.dockMagnification = 132
@@ -71,6 +74,22 @@ Item {
             shelf.finishDrag(false)
             mouseMove(shelf, 600, 200)
             wait(250)
+        }
+        function test_styleOpacityAndIndicatorOrientation() {
+            var glass = findChild(shelf, "dock-glass")
+            var indicator = findChild(shelf, "dock-running-b")
+            verify(indicator !== null)
+            compare(indicator.width, indicator.height)
+            controller.dockStyle = {opacity: 0, indicator: "rails", ambient: true, spotlight: false, raised: true}
+            compare(glass.opacity, 0)
+            verify(indicator.width > indicator.height)
+            controller.vertical = true; controller.edge = "left"
+            verify(indicator.height > indicator.width)
+            controller.dockStyle = {opacity: 100, indicator: "rails", ambient: true, spotlight: true, raised: true}
+            compare(glass.opacity, 1)
+            compare(indicator.opacity, 1)
+            controller.dockStyle = {opacity: 100, indicator: "rails", ambient: true, spotlight: true, activeLabel: true, raised: true, shadow: false}
+            compare(indicator.opacity, 0)
         }
         function test_neighbourLens() {
             mouseMove(shelf, 105, 82)

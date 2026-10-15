@@ -91,6 +91,27 @@ def desktop_id(value):
     return value
 
 
+def dock_style(value):
+    try:
+        style = json.loads(value)
+        validators = {
+            "theme": lambda v: v in ("desktop", "glass", "minimal", "raised", "custom"),
+            "opacity": lambda v: type(v) in (int, float) and 0 <= v <= 100,
+            "backgroundColor": lambda v: isinstance(v, str) and (v == "" or re.fullmatch(r"#[0-9a-fA-F]{6}", v)),
+            "indicator": lambda v: v in ("dots", "rails"),
+            "ambient": lambda v: type(v) is bool,
+            "spotlight": lambda v: type(v) is bool,
+            "activeLabel": lambda v: type(v) is bool,
+            "shadow": lambda v: type(v) is bool,
+            "raised": lambda v: type(v) is bool,
+        }
+        if not isinstance(style, dict) or any(k not in validators or not validators[k](v) for k, v in style.items()):
+            raise ValueError("Invalid dock style")
+        return style
+    except (ValueError, TypeError):
+        raise argparse.ArgumentTypeError("Expected valid dock style JSON")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -110,6 +131,7 @@ def main():
     p = sub.add_parser("appearance")
     p.add_argument("size", type=int, choices=range(24, 73), metavar="24..72")
     p.add_argument("magnification", type=int, choices=range(100, 201), metavar="100..200")
+    p.add_argument("--style", type=dock_style)
     for name in ("autohide", "intellihide"):
         sub.add_parser(name).add_argument("value", choices=("on", "off", "toggle"))
     args = parser.parse_args()
@@ -138,6 +160,8 @@ def main():
             dock["position"] = args.edge
         elif args.command == "appearance":
             dock.update(size=args.size, magnification=args.magnification)
+            if args.style is not None:
+                dock["style"] = {**dock.get("style", {}), **args.style}
         elif args.command in ("autohide", "intellihide"):
             dock[args.command] = not dock[args.command] if args.value == "toggle" else args.value == "on"
         elif args.command == "pin-at":
