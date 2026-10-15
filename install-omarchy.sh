@@ -24,7 +24,7 @@ if [[ -e $HOME/.local/bin/dock || -L $HOME/.local/bin/dock || -e ${XDG_CONFIG_HO
   exit 1
 fi
 
-omarchy-pkg-add base-devel python quickshell python-gobject qt6-declarative qt6-svg qt6-imageformats hicolor-icon-theme
+omarchy-pkg-add base-devel python quickshell python-gobject gvfs gdk-pixbuf2 librsvg qt6-declarative qt6-svg qt6-imageformats hicolor-icon-theme adwaita-icon-theme
 BUILD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/dock-package.XXXXXXXX")
 trap 'rm -rf -- "$BUILD_DIR"' EXIT
 python3 "$ROOT/tools/package_arch.py" --output "$BUILD_DIR"

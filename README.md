@@ -41,6 +41,7 @@ sent through the actual D-Bus interface, not real unread messages.
 - Sine-warp magnification, smooth hover transitions, and launch animation.
 - Pinned favorites followed by unpinned running applications.
 - Drag-to-reorder and live resizing with automatic persistence.
+- A persistent Trash icon after the divider, with live empty/full state.
 - Window switching, preview cards, and close/restore actions.
 - App-provided count badges, progress bars, and attention indicators.
 - Searchable application launcher with keyboard navigation.
@@ -115,6 +116,9 @@ installation for other compatible desktops follows below.
 - **Python 3.10+**, Git, and an installed icon theme.
 - **For badges and progress:** session D-Bus and Python GObject/Gio bindings
   (`python3-gi` on Debian/Ubuntu; `python-gobject` on Arch).
+- **For Trash:** GIO/GVfs with its trash backend and a file manager supporting
+  `trash:///`. GNOME Adwaita icons and GdkPixbuf/librsvg provide distinct empty/full
+  artwork with correct transparency. The Arch package installs these dependencies.
 - **For the Hyprland integration:** Quickshell's Hyprland module and `hyprctl`
   available on `PATH`.
 
@@ -280,15 +284,23 @@ applications appear automatically when the compositor exposes them.
 | Right-click the launcher | Settings, position, and hide options |
 | Click an app | Launch it, or switch between its windows |
 | Middle-click an app | Request another launch |
-| Right-click an app | Pin/unpin it or select a window |
+| Right-click an app | Options, Show All Windows, Hide, and Quit; inactive apps offer Open |
 | Drag an icon | Reorder favorites; drag a running app into favorites to pin it |
 | Drag the divider toward the desktop | Enlarge the dock live |
 | Drag the divider toward the screen edge | Shrink the dock live |
 | Hover a running app | Show its window previews |
+| Click Trash | Open the desktop's Trash folder |
+| Right-click Trash | Open Trash or request “Empty Trash…” with confirmation |
 
 The divider separates favorites from unpinned running apps and remains available
 when that second group is empty. Resizing saves when you release it. For a bottom
 dock, **up enlarges and down shrinks**.
+
+App menus use compact, light popovers anchored to the selected icon. **Options →
+Keep in Dock** controls pinning. **Show All Windows** opens the app's preview cards;
+**Hide** requests minimization, and **Quit** sends normal close requests so apps can
+prompt about unsaved work. Trash uses GNOME's empty/full artwork, rasterized into
+the user's cache to preserve SVG transparency across Qt versions.
 
 ### Badges and notifications
 

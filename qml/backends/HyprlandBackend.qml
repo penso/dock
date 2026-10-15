@@ -37,6 +37,7 @@ Item {
     function activate(window) { if (controller && window) controller.action(["focus", address(window)]) }
     function close(window) { if (controller && window) controller.action(["close", address(window)]) }
     function minimizeActive() { if (controller) controller.action(["minimize"]) }
+    function minimize(window) { if (controller && window) controller.action(["minimize", address(window)]) }
     function restore() { if (controller) controller.action(["restore"]) }
     function monitorFor(screen) { return Hyprland.monitorFor(screen) }
     function workspaceFor(monitor) {

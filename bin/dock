@@ -11,6 +11,7 @@ fi
 export DOCK_CONFIG_DIR="${DOCK_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/dock}"
 export DOCK_HELPER="$data/bin/dockctl"
 export DOCK_BADGE_HELPER="${DOCK_BADGE_HELPER:-$data/bin/dock-badges}"
+export DOCK_TRASH_HELPER="${DOCK_TRASH_HELPER:-$data/bin/dock-trash}"
 export DOCK_COMPOSITOR="${DOCK_COMPOSITOR:-auto}"
 case "$DOCK_COMPOSITOR" in
     auto)

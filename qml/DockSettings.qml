@@ -9,8 +9,8 @@ FloatingWindow {
     visible: controller.dockSettingsOpen
     title: "Dock Settings"
     implicitWidth: 440
-    implicitHeight: 390
-    minimumSize: Qt.size(440, 390)
+    implicitHeight: 420
+    minimumSize: Qt.size(440, 420)
     color: controller.palette.base
     function flush() { if (saveDelay.running) { saveDelay.stop(); controller.saveAppearance() } }
     function close() { flush(); controller.dockSettingsOpen = false }
@@ -24,17 +24,32 @@ FloatingWindow {
     }
     Timer { id: saveDelay; interval: 300; onTriggered: controller.saveAppearance() }
     component SettingsButton: Button {
-        implicitHeight: 32
+        id: settingsButton
+        implicitWidth: Math.max(80, implicitContentWidth + leftPadding + rightPadding)
+        implicitHeight: Math.max(42, implicitContentHeight + topPadding + bottomPadding)
+        leftPadding: 18; rightPadding: 18; topPadding: 11; bottomPadding: 11
+        hoverEnabled: true
+        font.pixelSize: 14; font.weight: Font.DemiBold
         contentItem: Text {
-            text: parent.text; font: parent.font
-            color: parent.checked ? panel.controller.palette.base : panel.controller.palette.text
+            text: settingsButton.text; font: settingsButton.font
+            color: settingsButton.checked ? panel.controller.palette.base : panel.controller.palette.text
             horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
         }
         background: Rectangle {
-            radius: 8
-            color: parent.checked ? panel.controller.palette.blue : parent.flat && !parent.hovered ? "transparent" : panel.controller.palette.surface
-            border.width: parent.activeFocus ? 1 : 0
-            border.color: panel.controller.palette.blue
+            radius: 10
+            color: settingsButton.checked
+                ? (settingsButton.down ? Qt.darker(panel.controller.palette.blue, 1.15) : settingsButton.hovered ? Qt.lighter(panel.controller.palette.blue, 1.1) : panel.controller.palette.blue)
+                : settingsButton.down ? panel.controller.alpha(panel.controller.palette.blue, 0.25)
+                : settingsButton.hovered ? Qt.lighter(panel.controller.palette.surface, 1.2)
+                : settingsButton.flat ? "transparent" : panel.controller.palette.surface
+            border.width: settingsButton.flat ? 0 : 1
+            border.color: panel.controller.alpha(panel.controller.palette.text, 0.1)
+            Behavior on color { ColorAnimation { duration: 110 } }
+            Rectangle {
+                anchors.fill: parent; anchors.margins: -3; radius: 13; color: "transparent"
+                visible: settingsButton.visualFocus
+                border.width: 2; border.color: panel.controller.alpha(panel.controller.palette.blue, 0.7)
+            }
         }
     }
     component SettingsSlider: Slider {
@@ -94,6 +109,7 @@ FloatingWindow {
                     SettingsButton {
                         required property string modelData
                         Layout.fillWidth: true
+                        Layout.preferredWidth: 0
                         text: modelData; checkable: true; autoExclusive: true
                         checked: panel.controller.edge === modelData.toLowerCase()
                         onClicked: { panel.flush(); panel.controller.action(["position", modelData.toLowerCase()]) }
@@ -102,7 +118,7 @@ FloatingWindow {
             }
             Item { Layout.fillHeight: true }
             RowLayout {
-                Layout.fillWidth: true
+                Layout.fillWidth: true; spacing: 12
                 SettingsButton {
                     text: "Reset size & magnification"; flat: true
                     onClicked: {

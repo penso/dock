@@ -7,8 +7,9 @@ Item {
     id: shelf
     required property var controller
     required property var host
-    signal launcherMenu()
-    signal appMenu(var item)
+    signal launcherMenu(var anchor)
+    signal appMenu(var item, var anchor)
+    signal trashMenu(var anchor)
     readonly property bool vertical: controller.vertical
     readonly property string edge: controller.edge
     property real iconSize: 40
@@ -40,8 +41,9 @@ Item {
     readonly property int pinCount: controller.items.filter(function(i) { return i.pinned }).length
     readonly property bool divided: true
     readonly property var order: dragging ? DockModel.dragOrder(keys, dragKey, dragIndex) : keys
-    readonly property real baseLength: (keys.length + 1) * cell + (divided ? 16 * unit : 0) + 20 * unit
-    readonly property bool magnify: shelfHover.hovered && hoverActive && !dragging && !resizing && host.expanded
+    readonly property var layoutKeys: order.concat(["@trash"])
+    readonly property real baseLength: (keys.length + 2) * cell + (divided ? 16 * unit : 0) + 20 * unit
+    readonly property bool magnify: (host.contextMenuOpen || (shelfHover.hovered && hoverActive)) && !dragging && !resizing && host.expanded
     onMagnifyChanged: {
         rampFrom = lensAmount
         rampTarget = magnify ? 1 : 0
@@ -58,7 +60,7 @@ Item {
             shelf.lensAmount = DockModel.fishTransition(shelf.rampFrom, shelf.rampTarget, shelf.rampElapsed, shelf.rampDuration)
         }
     }
-    readonly property var lens: DockModel.lensLayout(order, pinCount, iconSize, maximumMagnification,
+    readonly property var lens: DockModel.lensLayout(layoutKeys, pinCount, iconSize, maximumMagnification,
         lensPointer, lensAmount, vertical ? host.height : host.width)
     readonly property var layout: lens.items
     readonly property real axisOffset: lens.offset
@@ -83,6 +85,7 @@ Item {
         if (JSON.stringify(next) !== JSON.stringify(keys)) keys = next
     }
     function trackPointer() {
+        if (host.contextMenuOpen) return
         var p = shelfHover.point.position
         var axis = vertical ? p.y - y : p.x - x
         var cross = vertical ? p.x - x : p.y - y
@@ -115,6 +118,10 @@ Item {
     function resizeHandleGeometry() {
         var point = resizeGrip.mapToItem(shelf.parent, 0, 0)
         return { x: point.x, y: point.y, width: resizeGrip.width, height: resizeGrip.height }
+    }
+    function trashHandleGeometry() {
+        var point = trashSlot.mapToItem(shelf.parent, 0, 0)
+        return { x: point.x, y: point.y, width: trashSlot.width, height: trashSlot.height }
     }
     function updateResize(cross) {
         if (!resizing) return
@@ -235,13 +242,13 @@ Item {
             }
             DockLabel {
                 parent: launcherIcon; edge: shelf.edge
-                visible: launcherMouse.containsMouse && shelf.labelReady && !shelf.dragging
+                visible: launcherMouse.containsMouse && shelf.labelReady && !shelf.dragging && !host.contextMenuOpen
                 text: "Applications"
             }
             MouseArea {
                 id: launcherMouse; anchors.fill: parent; hoverEnabled: true
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
-                onClicked: function(mouse) { if (mouse.button === Qt.RightButton) shelf.launcherMenu(); else controller.appsOpen = !controller.appsOpen }
+                onClicked: function(mouse) { if (mouse.button === Qt.RightButton) shelf.launcherMenu(launcherIcon); else controller.appsOpen = !controller.appsOpen }
             }
         }
         Repeater {
@@ -264,7 +271,7 @@ Item {
                 Behavior on y { enabled: shelf.dragging && !slot.lifted; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
                 AppTile {
                     id: icon
-                    property real pressScale: mouse.pressed && !slot.lifted ? 0.94 : 1
+                    property real pressScale: mouse.pressed && (mouse.pressedButtons & Qt.LeftButton) && !slot.lifted ? 0.94 : 1
                     property real liftScale: slot.lifted ? 1.14 : 1
                     readonly property real iconSize: shelf.iconSize * slot.place.scale * pressScale * liftScale
                     Behavior on pressScale { NumberAnimation { duration: 110 } }
@@ -298,12 +305,12 @@ Item {
                 }
                 DockLabel {
                     parent: icon; edge: shelf.edge
-                    visible: mouse.containsMouse && !!slot.app && shelf.labelReady && !shelf.dragging && host.previewKey !== slot.modelData
+                    visible: mouse.containsMouse && !!slot.app && shelf.labelReady && !shelf.dragging && !host.contextMenuOpen && host.previewKey !== slot.modelData
                     text: controller.name(slot.modelData)
                 }
                 Timer {
                     id: previewDelay; interval: host.previewKey ? 110 : 450
-                    onTriggered: if (mouse.containsMouse && slot.app && slot.app.windows.length && !shelf.dragging) {
+                    onTriggered: if (mouse.containsMouse && slot.app && slot.app.windows.length && !shelf.dragging && !host.contextMenuOpen) {
                         host.previewAnchor = slot; host.previewKey = slot.modelData
                     }
                 }
@@ -333,11 +340,45 @@ Item {
                     onCanceled: shelf.finishDrag(false)
                     onClicked: function(event) {
                         if (wasDragged || !slot.app) return
+                        previewDelay.stop()
                         host.previewKey = ""
-                        if (event.button === Qt.RightButton) shelf.appMenu(slot.app)
+                        if (event.button === Qt.RightButton) shelf.appMenu(slot.app, icon)
                         else if (event.button === Qt.MiddleButton) controller.launch(slot.modelData)
                         else controller.activate(slot.app)
                     }
+                }
+            }
+        }
+        Item {
+            id: trashSlot
+            objectName: "dock-trash-slot"
+            readonly property var place: shelf.placement("@trash")
+            x: vertical ? 0 : place.position; y: vertical ? place.position : 0
+            width: vertical ? depth : place.extent; height: vertical ? place.extent : depth
+            Image {
+                id: trashIcon
+                width: shelf.iconSize * trashSlot.place.scale; height: width
+                x: vertical ? (edge === "right" ? shelf.iconBaseline - width : shelf.iconStart) : (parent.width - width) / 2
+                y: vertical ? (parent.height - height) / 2 : (edge === "bottom" ? shelf.iconBaseline - height : shelf.iconStart)
+                source: controller.trash ? controller.trash.icon : ""
+                sourceSize: Qt.size(256, 256)
+                fillMode: Image.PreserveAspectFit
+            }
+            DockLabel {
+                parent: trashIcon; edge: shelf.edge
+                visible: trashMouse.containsMouse && shelf.labelReady && !shelf.dragging && !host.contextMenuOpen
+                text: controller.trash ? controller.trash.label : "Trash"
+            }
+            MouseArea {
+                id: trashMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                onEntered: host.dismissPreview()
+                onClicked: function(event) {
+                    host.previewKey = ""
+                    if (event.button === Qt.RightButton) shelf.trashMenu(trashIcon)
+                    else if (controller.trash) controller.trash.open()
                 }
             }
         }

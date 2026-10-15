@@ -32,6 +32,7 @@ Item {
     function minimizeActive() {
         if (ToplevelManager.activeToplevel) ToplevelManager.activeToplevel.minimized = true
     }
+    function minimize(window) { if (window && window.wayland) window.wayland.minimized = true }
     function restore() {
         var window = windows.find(function(item) { return item.minimized })
         if (window) activate(window)

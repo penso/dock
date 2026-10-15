@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+"""Watch the desktop's GIO trash without polling or modifying its contents."""
+import json
+import hashlib
+import os
+from pathlib import Path
+import signal
+import sys
+import tempfile
+from urllib.parse import unquote, urlsplit
+
+
+def gnome_icons(data_dirs=None):
+    """Resolve GNOME artwork explicitly instead of relying on Qt's current theme."""
+    if data_dirs is None:
+        data_dirs = [os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local/share"),
+                     *(os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share").split(":")]
+    result = {"emptyIcon": "", "fullIcon": ""}
+    for key, name in (("emptyIcon", "user-trash"), ("fullIcon", "user-trash-full")):
+        for directory in data_dirs:
+            for theme in ("Adwaita", "AdwaitaLegacy", "gnome"):
+                for size in ("scalable", "512x512", "256x256", "128x128", "64x64", "48x48"):
+                    for category in ("places", "status"):
+                        for extension in ("svg", "png"):
+                            candidate = Path(directory) / "icons" / theme / size / category / f"{name}.{extension}"
+                            if candidate.is_file():
+                                result[key] = candidate.resolve().as_uri()
+                                break
+                        if result[key]: break
+                    if result[key]: break
+                if result[key]: break
+            if result[key]: break
+    return result
+
+
+def rasterized_icons(icons):
+    """GNOME's loader preserves SVG masks/alpha that QtSvg does not render correctly."""
+    import gi
+    gi.require_version("GdkPixbuf", "2.0")
+    from gi.repository import GdkPixbuf
+    cache = Path(os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")) / "dock/trash-icons"
+    result = dict(icons)
+    for key, uri in icons.items():
+        if not uri.endswith(".svg"):
+            continue
+        path = Path(unquote(urlsplit(uri).path))
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+        target = cache / f"{key}-{digest}-256.png"
+        if not target.exists():
+            cache.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=cache, suffix=".png", delete=False) as stream:
+                temporary = Path(stream.name)
+            try:
+                pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(path), 256, 256, True)
+                pixbuf.savev(str(temporary), "png", [], [])
+                os.replace(temporary, target)
+            finally:
+                temporary.unlink(missing_ok=True)
+        result[key] = target.resolve().as_uri()
+    return result
+
+
+def run():
+    import gi
+    gi.require_version("Gio", "2.0")
+    from gi.repository import Gio, GLib
+    try:
+        gi.require_version("GLibUnix", "2.0")
+        from gi.repository import GLibUnix
+        add_signal = GLibUnix.signal_add
+    except (ImportError, ValueError, AttributeError):
+        add_signal = GLib.unix_signal_add
+    loop = GLib.MainLoop()
+    trash = Gio.File.new_for_uri("trash:///")
+    icons = gnome_icons()
+    try:
+        icons = rasterized_icons(icons)
+    except (ImportError, ValueError, OSError, GLib.Error) as error:
+        print(f"dock-trash: GNOME icon rasterization unavailable: {error}", file=sys.stderr)
+        icons = {key: uri if uri.endswith(".png") else "" for key, uri in icons.items()}
+    last = None
+    pending = 0
+
+    def refresh():
+        nonlocal last, pending
+        pending = 0
+        try:
+            info = trash.query_info("trash::item-count", Gio.FileQueryInfoFlags.NONE, None)
+            if not info.has_attribute("trash::item-count"):
+                raise RuntimeError("Trash backend did not report an item count")
+            state = {"available": True, "count": info.get_attribute_uint32("trash::item-count"), "error": ""}
+        except (GLib.Error, RuntimeError) as error:
+            state = {"available": False, "count": 0, "error": str(error)}
+        line = json.dumps({**state, **icons})
+        if line != last:
+            try:
+                print(line, flush=True)
+            except BrokenPipeError:
+                loop.quit()
+            last = line
+        return False
+
+    def changed(*_):
+        nonlocal pending
+        if not pending:
+            pending = GLib.timeout_add(100, refresh)
+
+    refresh()
+    try:
+        monitor = trash.monitor_directory(Gio.FileMonitorFlags.NONE, None)
+        monitor.connect("changed", changed)
+    except GLib.Error as error:
+        print(json.dumps({"available": False, "count": 0, "error": str(error), **icons}), flush=True)
+        return
+    volumes = Gio.VolumeMonitor.get()
+    volumes.connect("mount-added", changed)
+    volumes.connect("mount-removed", changed)
+    GLib.io_add_watch(sys.stdout.fileno(), GLib.PRIORITY_DEFAULT,
+                     GLib.IOCondition.HUP | GLib.IOCondition.ERR, lambda *_: (loop.quit(), False)[1])
+    add_signal(GLib.PRIORITY_DEFAULT, signal.SIGTERM, lambda: (loop.quit(), False)[1])
+    add_signal(GLib.PRIORITY_DEFAULT, signal.SIGINT, lambda: (loop.quit(), False)[1])
+    try:
+        loop.run()
+    finally:
+        monitor.cancel()
+
+
+if __name__ == "__main__":
+    try:
+        run()
+    except (ImportError, ValueError, RuntimeError) as error:
+        print(json.dumps({"available": False, "count": 0, "error": str(error)}), flush=True)
+        raise SystemExit(1)

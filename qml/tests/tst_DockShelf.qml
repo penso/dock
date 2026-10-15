@@ -6,12 +6,19 @@ Item {
     id: scene
     width: 700; height: 500
     QtObject {
+        id: testTrash
+        property string icon: ""
+        property string label: "Trash"
+        function open() { controller.lastAction = ["trash-open"] }
+    }
+    QtObject {
         id: controller
         property bool vertical: false
         property string edge: "bottom"
         property bool appsOpen: false
         property var launches: ({})
         property var lastAction: []
+        property var trash: testTrash
         property bool resizingDock: false
         property int dockSize: 40
         property int dockMagnification: 132
@@ -37,6 +44,7 @@ Item {
         id: host
         property bool expanded: true
         property bool dragging: false
+        property bool contextMenuOpen: false
         property int width: 640
         property int height: 300
         property string previewKey: ""
@@ -52,7 +60,9 @@ Item {
     TestCase {
         name: "DockShelf"
         when: windowShown
+        SignalSpy { id: trashMenuSpy; target: shelf; signalName: "trashMenu" }
         function init() {
+            host.contextMenuOpen = false
             shelf.finishResize(false)
             controller.dockSize = 40; controller.dockMagnification = 132
             shelf.iconSize = 40; shelf.maximumMagnification = 1.32
@@ -229,6 +239,35 @@ Item {
                 compare(controller.dockSize, 40)
                 compare(controller.lastAction.length, 0)
             }
+        }
+        function test_trashStaysAfterDividerAndRunningApps() {
+            var trash = shelf.placement("@trash")
+            verify(trash.position > shelf.lens.separator)
+            var running = shelf.placement("c")
+            verify(trash.position >= running.position + running.extent)
+            verify(shelf.keys.indexOf("@trash") < 0)
+        }
+        function test_trashClickAndContextMenu() {
+            var slot = findChild(shelf, "dock-trash-slot")
+            verify(slot !== null)
+            mouseClick(slot, slot.width / 2, 82)
+            compare(controller.lastAction[0], "trash-open")
+            wait(200)
+            trashMenuSpy.clear()
+            mouseClick(slot, slot.width / 2, 82, Qt.RightButton)
+            compare(trashMenuSpy.count, 1)
+        }
+        function test_contextMenuKeepsClickedIconMagnified() {
+            mouseMove(shelf, 105, 82)
+            wait(200)
+            host.contextMenuOpen = true
+            var pointer = shelf.pointer
+            mouseMove(shelf, 600, 10)
+            wait(200)
+            verify(shelf.magnify)
+            compare(shelf.pointer, pointer)
+            host.contextMenuOpen = false
+            tryCompare(shelf, "lensAmount", 0)
         }
     }
 }

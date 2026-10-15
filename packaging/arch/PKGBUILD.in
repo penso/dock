@@ -6,7 +6,7 @@ pkgdesc='A macOS-inspired Wayland dock with magnification, badges and window pre
 arch=('any')
 url='https://github.com/penso/dock'
 license=('MIT')
-depends=('quickshell>=0.3.2' 'python>=3.10' 'python-gobject' 'qt6-declarative' 'qt6-svg' 'qt6-imageformats' 'hicolor-icon-theme')
+depends=('quickshell>=0.3.2' 'python>=3.10' 'python-gobject' 'gvfs' 'gdk-pixbuf2' 'librsvg' 'qt6-declarative' 'qt6-svg' 'qt6-imageformats' 'hicolor-icon-theme' 'adwaita-icon-theme')
 optdepends=('hyprland: workspace-aware switching, overlap hiding and native urgency')
 source=("@SOURCE@")
 sha256sums=('@SHA256@')

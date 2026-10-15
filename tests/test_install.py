@@ -23,6 +23,7 @@ class InstallTest(unittest.TestCase):
             self.assertEqual(settings["dock"]["pinned"], ["org.example.App"])
             self.assertTrue((home / "data/dock/qml/shell.qml").is_file())
             self.assertTrue((home / "data/dock/bin/dock-badges").is_file())
+            self.assertTrue((home / "data/dock/bin/dock-trash").is_file())
             self.assertTrue((home / "data/dock/qml/DockIndicators.qml").is_file())
             self.assertTrue((home / "config/systemd/user/dock.service").is_file())
             self.assertFalse((home / ".config/penso-floating").exists())

@@ -19,7 +19,7 @@ Backends expose:
 - `name`, `capabilities`, `focusedScreen`, and `activeWorkspace`.
 - A reactive `windows` array containing `appId`, `title`, `wayland`,
   `activated`, `minimized`, `urgent`, and `workspaceId`.
-- `activate(window)`, `close(window)`, `minimizeActive()`, and `restore()`.
+- `activate(window)`, `close(window)`, `minimize(window)`, `minimizeActive()`, and `restore()`.
 - `monitorFor(screen)`, `workspaceFor(monitor)`, `topMargin(monitor)`, and
   `overlaps(workspace, rectangle)` for panel placement and optional intelligent hiding.
 

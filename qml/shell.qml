@@ -47,6 +47,12 @@ ShellRoot {
     }
     function saveAppearance() { action(["appearance", String(dockSize), String(dockMagnification)]) }
     property var menuItem: null
+    readonly property var trash: trashService
+    TrashService {
+        id: trashService
+        helper: Quickshell.env("DOCK_TRASH_HELPER") || root.helper.replace(/dockctl$/, "dock-trash")
+        colors: root.palette
+    }
     property var launches: ({})
     property var launcherEntries: ({})
     property bool badgeBridgeReady: false
@@ -87,6 +93,8 @@ ShellRoot {
     function name(key) { var app = entry(key); return app ? app.name : key }
     function focusWindow(window) { if (backend) backend.activate(window) }
     function closeWindow(window) { if (backend) backend.close(window) }
+    function hideApp(item) { if (backend && item) item.windows.forEach(function(window) { backend.minimize(window) }) }
+    function quitApp(item) { if (item) item.windows.slice().forEach(function(window) { root.closeWindow(window) }) }
     function launch(key) {
         var app = entry(key)
         if (app) {
@@ -164,10 +172,11 @@ ShellRoot {
         function settings(): void { root.dockSettingsOpen = true }
         function status(): string {
             return JSON.stringify({ compositor: root.backend ? root.backend.name : "loading", capabilities: root.backend ? root.backend.capabilities : {},
+                trash: { available: root.trash.available, count: root.trash.count, confirming: root.trash.confirming, busy: root.trash.busy, error: root.trash.error },
                 edge: root.edge, size: root.dockSize, magnification: root.dockMagnification, settingsOpen: root.dockSettingsOpen,
                 badges: { ready: root.badgeBridgeReady, ownsUnityName: root.ownsUnityName }, panels: Array.from(dockVariants.instances).map(function(panel) {
                 return { screen: panel.screen.name, expanded: panel.expanded, overlapping: panel.overlapping, reveal: panel.reveal, preview: panel.previewKey,
-                    resizing: panel.shelfItem.resizing, resizeHandle: panel.shelfItem.resizeHandleGeometry() }
+                    resizing: panel.shelfItem.resizing, resizeHandle: panel.shelfItem.resizeHandleGeometry(), trashHandle: panel.shelfItem.trashHandleGeometry() }
             }), apps: root.items.map(function(item) {
                 return { key: item.key, windows: item.windows.length, minimized: item.windows.filter(function(w) { return w.minimized }).length,
                     activity: item.activity, urgent: item.urgent }
@@ -200,6 +209,7 @@ ShellRoot {
             property string previewKey: ""
             property var previewAnchor: null
             property bool dragging: false
+            readonly property bool contextMenuOpen: dockMenu.visible || appMenu.visible || trashMenu.visible
             readonly property var shelfItem: shelf
             property real reveal: expanded ? 1 : 0
             Behavior on reveal { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
@@ -214,7 +224,7 @@ ShellRoot {
                 var y = monitor.y + (root.edge === "top" ? dock.margins.top : root.edge === "bottom" ? screen.height - h : (screen.height - h) / 2 + shelf.axisOffset)
                 return root.backend.overlaps(dock.workspace, Qt.rect(x, y, w, h))
             }
-            readonly property bool expanded: hovered || dragging || root.dockSettingsOpen || previews.visible || dockMenu.opened || appMenu.opened || (!root.settings.dock.autohide && !(root.settings.dock.intellihide !== false && overlapping))
+            readonly property bool expanded: hovered || dragging || root.dockSettingsOpen || root.trash.confirming || previews.visible || contextMenuOpen || (!root.settings.dock.autohide && !(root.settings.dock.intellihide !== false && overlapping))
             readonly property real length: root.vertical ? screen.height - 120 : screen.width - 80
             visible: enabledHere
             color: "transparent"
@@ -269,8 +279,9 @@ ShellRoot {
                     x: root.vertical ? (1 - dock.reveal) * (root.edge === "right" ? root.dockDepth : -root.dockDepth) : 0
                     y: root.vertical ? 0 : (1 - dock.reveal) * (root.edge === "bottom" ? root.dockDepth : -root.dockDepth)
                 }
-                onLauncherMenu: dockMenu.popup()
-                onAppMenu: function(item) { root.menuItem = item; appMenu.popup() }
+                onLauncherMenu: function(anchor) { dockMenu.popupFor(anchor, root.edge, dock.contentItem) }
+                onAppMenu: function(item, anchor) { root.menuItem = item; appMenu.popupFor(anchor, root.edge, dock.contentItem) }
+                onTrashMenu: function(anchor) { trashMenu.popupFor(anchor, root.edge, dock.contentItem) }
             }
             Timer { id: previewClose; interval: 350; onTriggered: if (!previewHover.hovered) dock.previewKey = "" }
             PopupWindow {
@@ -359,6 +370,7 @@ ShellRoot {
             }
             DockMenu {
                 id: dockMenu
+                preferredWidth: 236
                 colors: root.palette
                 DockMenuItem { text: "Dock Settings…"; glyph: "⚙"; onTriggered: root.dockSettingsOpen = true }
                 DockMenuItem { text: "Applications"; glyph: "⠿"; onTriggered: root.appsOpen = true }
@@ -380,23 +392,49 @@ ShellRoot {
             DockMenu {
                 id: appMenu
                 colors: root.palette
-                DockMenuItem { text: root.menuItem ? "Open " + root.name(root.menuItem.key) : "Open"; glyph: "↗"; onTriggered: root.launch(root.menuItem.key) }
-                DockMenuItem {
-                    text: root.menuItem && root.menuItem.pinned ? "Unpin from dock" : "Pin to dock"
-                    onTriggered: root.action([root.menuItem.pinned ? "unpin" : "pin", root.menuItem.key])
+                DockMenu {
+                    title: "Options"
+                    colors: root.palette
+                    DockMenuItem {
+                        text: "Keep in Dock"
+                        checkable: true
+                        checked: !!root.menuItem && root.menuItem.pinned
+                        onTriggered: if (root.menuItem) root.action([root.menuItem.pinned ? "unpin" : "pin", root.menuItem.key])
+                    }
+                    DockMenuSeparator {}
+                    DockMenuItem { text: "Dock Settings…"; onTriggered: root.dockSettingsOpen = true }
                 }
-                DockMenuItem { text: "Dock Settings…"; glyph: "⚙"; onTriggered: root.dockSettingsOpen = true }
                 DockMenuSeparator {}
                 Instantiator {
-                    model: root.menuItem ? root.menuItem.windows : []
+                    model: root.menuItem && root.menuItem.windows.length ? ["Show All Windows", "Hide", "Quit"] : ["Open"]
                     delegate: DockMenuItem {
-                        required property var modelData
-                        glyph: modelData.minimized ? "↥" : "▣"
-                        text: (modelData.minimized ? "Restore: " : "Focus: ") + modelData.title
-                        onTriggered: root.focusWindow(modelData)
+                        required property string modelData
+                        text: modelData
+                        onTriggered: {
+                            if (!root.menuItem) return
+                            if (modelData === "Open") root.launch(root.menuItem.key)
+                            else if (modelData === "Hide") root.hideApp(root.menuItem)
+                            else if (modelData === "Quit") root.quitApp(root.menuItem)
+                            else {
+                                dock.previewAnchor = appMenu.anchorItem
+                                dock.previewKey = root.menuItem.key
+                                dock.keepPreview()
+                            }
+                        }
                     }
-                    onObjectAdded: function(index, object) { appMenu.insertItem(index + 4, object) }
+                    onObjectAdded: function(index, object) { appMenu.insertItem(index + 2, object) }
                     onObjectRemoved: function(index, object) { appMenu.removeItem(object) }
+                }
+            }
+            DockMenu {
+                id: trashMenu
+                preferredWidth: 170
+                colors: root.palette
+                DockMenuItem { text: "Open Trash"; onTriggered: root.trash.open() }
+                DockMenuItem {
+                    text: "Empty Trash…"
+                    enabled: root.trash.available && root.trash.count > 0 && !root.trash.busy
+                    onTriggered: root.trash.requestEmpty()
                 }
             }
         }
